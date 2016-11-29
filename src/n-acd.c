@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/auxv.h>
 #include <sys/epoll.h>
 #include <unistd.h>
 #include "n-acd.h"
@@ -12,6 +13,7 @@
 
 struct NAcd {
         unsigned long n_refs;
+        unsigned int seed;
         int fd_epoll;
         int ifindex;
         struct ether_addr mac;
@@ -23,6 +25,7 @@ struct NAcd {
 
 _public_ int n_acd_new(NAcd **acdp) {
         _cleanup_(n_acd_unrefp) NAcd *acd = NULL;
+        void *p;
 
         acd = calloc(1, sizeof(*acd));
         if (!acd)
@@ -31,6 +34,15 @@ _public_ int n_acd_new(NAcd **acdp) {
         acd->n_refs = 1;
         acd->fd_epoll = -1;
         acd->ifindex = -1;
+
+        /*
+         * We need random jitter for all timeouts when handling ARP probes. Use
+         * AT_RANDOM to get a seed for rand_r(3p), if available (should always
+         * be available on linux). See the time-out scheduler for details.
+         */
+        p = (void *)getauxval(AT_RANDOM);
+        if (p)
+                acd->seed = *(unsigned int *)p;
 
         acd->fd_epoll = epoll_create1(EPOLL_CLOEXEC);
         if (acd->fd_epoll < 0)
