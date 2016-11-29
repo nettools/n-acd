@@ -1,0 +1,22 @@
+n-acd - IPv4 Address Conflict Detection
+
+DETAILS:
+        https://github.com/nettools/n-acd
+
+BUG REPORTS:
+        https://github.com/nettools/n-acd/issues
+
+GIT:
+        git@github.com:nettools/n-acd.git
+        https://github.com/nettools/n-acd.git
+
+GITWEB:
+        https://github.com/nettools/n-acd
+
+LICENSE:
+        Apache Software License 2.0 (LICENSE-APACHE)
+        See COPYING for details.
+
+ABOUT:
+        The n-acd project implements the IPv4 Address Conflict Detection
+        standard as defined in RFC-5227.

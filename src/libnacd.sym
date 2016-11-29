@@ -1,0 +1,19 @@
+LIBNACD_1 {
+global:
+        n_acd_new;
+        n_acd_ref;
+        n_acd_unref;
+        n_acd_is_running;
+        n_acd_get_fd;
+        n_acd_get_ifindex;
+        n_acd_get_mac;
+        n_acd_get_address;
+        n_acd_set_ifindex;
+        n_acd_set_mac;
+        n_acd_set_address;
+        n_acd_dispatch;
+        n_acd_start;
+        n_acd_stop;
+local:
+       *;
+};

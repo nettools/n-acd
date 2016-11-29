@@ -1,0 +1,5 @@
+Name: libnacd
+Description: IPv4 Address Conflict Detection Library
+Version: @VERSION@
+Libs: -L@libdir@ -lnacd
+Cflags: -I@includedir@
