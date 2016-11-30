@@ -26,6 +26,10 @@ enum {
         N_ACD_EPOLL_SOCKET,
 };
 
+enum {
+        N_ACD_STATE_INIT,
+};
+
 struct NAcd {
         /* context */
         unsigned long n_refs;
@@ -42,6 +46,7 @@ struct NAcd {
         NAcdFn fn;
         void *userdata;
         int fd_socket;
+        unsigned int state;
 };
 
 _public_ int n_acd_new(NAcd **acdp) {
@@ -58,6 +63,7 @@ _public_ int n_acd_new(NAcd **acdp) {
         acd->fd_timer = -1;
         acd->ifindex = -1;
         acd->fd_socket = -1;
+        acd->state = N_ACD_STATE_INIT;
 
         /*
          * We need random jitter for all timeouts when handling ARP probes. Use
@@ -121,7 +127,7 @@ _public_ NAcd *n_acd_unref(NAcd *acd) {
 }
 
 _public_ bool n_acd_is_running(NAcd *acd) {
-        return !!acd->fn;
+        return acd->state != N_ACD_STATE_INIT;
 }
 
 _public_ void n_acd_get_fd(NAcd *acd, int *fdp) {
@@ -451,6 +457,7 @@ error:
 _public_ void n_acd_stop(NAcd *acd) {
         acd->fn = NULL;
         acd->userdata = NULL;
+        acd->state = N_ACD_STATE_INIT;
         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
 
         if (acd->fd_socket >= 0) {
