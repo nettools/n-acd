@@ -88,10 +88,19 @@ _public_ NAcd *n_acd_unref(NAcd *acd) {
                 return NULL;
 
         n_acd_stop(acd);
-        if (acd->fd_timer >= 0)
+
+        if (acd->fd_timer >= 0) {
+                assert(acd->fd_epoll >= 0);
+                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_timer, NULL);
                 close(acd->fd_timer);
-        if (acd->fd_epoll >= 0)
+                acd->fd_timer = -1;
+        }
+
+        if (acd->fd_epoll >= 0) {
                 close(acd->fd_epoll);
+                acd->fd_epoll = -1;
+        }
+
         free(acd);
 
         return NULL;
