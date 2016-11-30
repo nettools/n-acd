@@ -13,18 +13,22 @@
 #define _public_ __attribute__((__visibility__("default")))
 
 enum {
-        N_ACD_EVENT_TIMER,
+        N_ACD_EPOLL_TIMER,
 };
 
 struct NAcd {
+        /* context */
         unsigned long n_refs;
         unsigned int seed;
         int fd_epoll;
         int fd_timer;
+
+        /* configuration */
         int ifindex;
         struct ether_addr mac;
         struct in_addr address;
 
+        /* runtime */
         NAcdFn fn;
         void *userdata;
 };
@@ -63,7 +67,7 @@ _public_ int n_acd_new(NAcd **acdp) {
         r = epoll_ctl(acd->fd_epoll, EPOLL_CTL_ADD, acd->fd_timer,
                       &(struct epoll_event){
                               .events = EPOLLIN,
-                              .data.u32 = N_ACD_EVENT_TIMER,
+                              .data.u32 = N_ACD_EPOLL_TIMER,
                       });
         if (r < 0)
                 return -errno;
@@ -235,7 +239,7 @@ _public_ int n_acd_dispatch(NAcd *acd) {
 
         for (i = 0; i < n; ++i) {
                 switch (events[i].data.u32) {
-                case N_ACD_EVENT_TIMER:
+                case N_ACD_EPOLL_TIMER:
                         r = n_acd_dispatch_timer(acd, events + i);
                         break;
                 default:
