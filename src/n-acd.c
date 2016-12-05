@@ -20,6 +20,21 @@
 
 #define _public_ __attribute__((__visibility__("default")))
 
+/*
+ * These parameters and timing intervals are taken directly from the RFC-5227.
+ * See there for details why they were selected like this.
+ */
+#define N_ACD_RFC_PROBE_NUM                     (3)
+#define N_ACD_RFC_PROBE_WAIT_USEC               (UINT64_C(1000000)) /* 1s */
+#define N_ACD_RFC_PROBE_MIN_USEC                (UINT64_C(1000000)) /* 1s */
+#define N_ACD_RFC_PROBE_MAX_USEC                (UINT64_C(3000000)) /* 3s */
+#define N_ACD_RFC_ANNOUNCE_NUM                  (3)
+#define N_ACD_RFC_ANNOUNCE_WAIT_USEC            (UINT64_C(2000000)) /* 2s */
+#define N_ACD_RFC_ANNOUNCE_INTERVAL_USEC        (UINT64_C(2000000)) /* 2s */
+#define N_ACD_RFC_MAX_CONFLICTS                 (10)
+#define N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC      (UINT64_C(60000000)) /* 60s */
+#define N_ACD_RFC_DEFEND_INTERVAL_USEC          (UINT64_C(10000000)) /* 10s */
+
 enum {
         N_ACD_EPOLL_TIMER,
         N_ACD_EPOLL_SOCKET,
