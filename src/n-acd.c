@@ -1,3 +1,19 @@
+/*
+ * IPv4 Address Conflict Detection
+ *
+ * This implements the main n-acd API. It is built around an epoll-fd to
+ * encapsulate a timerfd+socket. The n-acd context has quite straightforward
+ * lifetime rules. First, the parameters must be set by the caller, then the
+ * engine is started on demand, and stopped if no longer needed. While stopped,
+ * parameters may be changed for a next run.
+ * During the entire lifetime the context can be dispatched. That is, the
+ * dispatcher does not have to be aware of the context state.
+ *
+ * If a conflict is detected, the ACD engine reports to the caller and stops
+ * the engine. The caller can now modify parameters and restart the engine, if
+ * required.
+ */
+
 #include <assert.h>
 #include <endian.h>
 #include <errno.h>

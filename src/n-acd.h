@@ -3,8 +3,9 @@
 /*
  * IPv4 Address Conflict Detection
  *
- * This is the public header of the n-acd library. It defines the public API
- * and all entry points.
+ * This is the public header of the n-acd library, implementing IPv4 Address
+ * Conflict Detection as described in RFC-5227. This header defines the public
+ * API and all entry points if n-acd.
  */
 
 #ifdef __cplusplus
