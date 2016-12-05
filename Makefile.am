@@ -67,7 +67,7 @@ libnacd_a_SOURCES = \
 # ------------------------------------------------------------------------------
 # test-api
 
-test_api_SOURCES = src/test-api.c
+test_api_SOURCES = src/test.h src/test-api.c
 test_api_LDADD = libnacd.so.0 # explicitly linked against public library
 
 # ------------------------------------------------------------------------------
