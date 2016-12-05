@@ -37,6 +37,7 @@ int n_acd_set_ip(NAcd *acd, const struct in_addr *ip);
 int n_acd_dispatch(NAcd *acd);
 int n_acd_start(NAcd *acd, NAcdFn fn, void *userdata);
 void n_acd_stop(NAcd *acd);
+int n_acd_announce(NAcd *acd, unsigned int defend);
 
 static inline void n_acd_unrefp(NAcd **acd) {
         if (*acd)

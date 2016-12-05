@@ -506,3 +506,7 @@ _public_ void n_acd_stop(NAcd *acd) {
                 acd->fd_socket = -1;
         }
 }
+
+_public_ int n_acd_announce(NAcd *acd, unsigned int defend) {
+        return 0;
+}

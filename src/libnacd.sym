@@ -14,6 +14,7 @@ global:
         n_acd_dispatch;
         n_acd_start;
         n_acd_stop;
+        n_acd_announce;
 local:
        *;
 };
