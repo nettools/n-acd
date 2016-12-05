@@ -18,7 +18,6 @@
 #include <unistd.h>
 #include "n-acd.h"
 
-#define _cleanup_(_x) __attribute__((__cleanup__(_x)))
 #define _public_ __attribute__((__visibility__("default")))
 
 enum {
@@ -50,7 +49,7 @@ struct NAcd {
 };
 
 _public_ int n_acd_new(NAcd **acdp) {
-        _cleanup_(n_acd_unrefp) NAcd *acd = NULL;
+        NAcd *acd;
         void *p;
         int r;
 
@@ -75,24 +74,33 @@ _public_ int n_acd_new(NAcd **acdp) {
                 acd->seed = *(unsigned int *)p;
 
         acd->fd_epoll = epoll_create1(EPOLL_CLOEXEC);
-        if (acd->fd_epoll < 0)
-                return -errno;
+        if (acd->fd_epoll < 0) {
+                r = -errno;
+                goto error;
+        }
 
         acd->fd_timer = timerfd_create(CLOCK_BOOTTIME, TFD_CLOEXEC | TFD_NONBLOCK);
-        if (acd->fd_timer < 0)
-                return -errno;
+        if (acd->fd_timer < 0) {
+                r = -errno;
+                goto error;
+        }
 
         r = epoll_ctl(acd->fd_epoll, EPOLL_CTL_ADD, acd->fd_timer,
                       &(struct epoll_event){
                               .events = EPOLLIN,
                               .data.u32 = N_ACD_EPOLL_TIMER,
                       });
-        if (r < 0)
-                return -errno;
+        if (r < 0) {
+                r = -errno;
+                goto error;
+        }
 
         *acdp = acd;
-        acd = NULL;
         return 0;
+
+error:
+        n_acd_unref(acd);
+        return r;
 }
 
 _public_ NAcd *n_acd_ref(NAcd *acd) {
