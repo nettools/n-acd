@@ -15,10 +15,27 @@ extern "C" {
 #include <stdbool.h>
 
 struct ether_addr;
+struct ether_arp;
 struct in_addr;
 
 typedef struct NAcd NAcd;
-typedef void (*NAcdFn) (NAcd *acd, void *userdata);
+typedef void (*NAcdFn) (NAcd *acd, void *userdata, unsigned int event, const struct ether_arp *conflict);
+
+enum {
+        N_ACD_DEFEND_NEVER,
+        N_ACD_DEFEND_ONCE,
+        N_ACD_DEFEND_ALWAYS,
+        _N_ACD_DEFEND_N,
+};
+
+enum {
+        N_ACD_EVENT_READY,
+        N_ACD_EVENT_USED,
+        N_ACD_EVENT_DEFENDED,
+        N_ACD_EVENT_CONFLICT,
+        N_ACD_EVENT_DOWN,
+        _N_ACD_EVENT_N,
+};
 
 int n_acd_new(NAcd **acdp);
 NAcd *n_acd_ref(NAcd *acd);

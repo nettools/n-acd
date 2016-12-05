@@ -58,6 +58,9 @@ enum {
 
 enum {
         N_ACD_STATE_INIT,
+        N_ACD_STATE_PROBING,
+        N_ACD_STATE_ANNOUNCING,
+        N_ACD_STATE_DOWN,
 };
 
 struct NAcd {
@@ -77,6 +80,9 @@ struct NAcd {
         void *userdata;
         int fd_socket;
         unsigned int state;
+        unsigned int n_iteration;
+        unsigned int defend;
+        uint64_t last_defend;
 };
 
 _public_ int n_acd_new(NAcd **acdp) {
@@ -94,6 +100,7 @@ _public_ int n_acd_new(NAcd **acdp) {
         acd->ifindex = -1;
         acd->fd_socket = -1;
         acd->state = N_ACD_STATE_INIT;
+        acd->defend = N_ACD_DEFEND_NEVER;
 
         /*
          * We need random jitter for all timeouts when handling ARP probes. Use
@@ -250,7 +257,221 @@ static int n_acd_schedule(NAcd *acd, uint64_t u_timeout, unsigned int u_jitter) 
         return 0;
 }
 
+static int n_acd_send(NAcd *acd, const struct in_addr *spa) {
+        struct sockaddr_ll address = {
+                .sll_family = AF_PACKET,
+                .sll_protocol = htobe16(ETH_P_ARP),
+                .sll_ifindex = acd->ifindex,
+                .sll_halen = ETH_ALEN,
+                .sll_addr = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff },
+        };
+        struct ether_arp arp = {
+                .ea_hdr.ar_hrd = htobe16(ARPHRD_ETHER),
+                .ea_hdr.ar_pro = htobe16(ETHERTYPE_IP),
+                .ea_hdr.ar_hln = ETH_ALEN,
+                .ea_hdr.ar_pln = sizeof(uint32_t),
+                .ea_hdr.ar_op = htobe16(ARPOP_REQUEST),
+        };
+        int r;
+
+        memcpy(arp.arp_sha, acd->mac.ether_addr_octet, ETH_ALEN);
+        memcpy(arp.arp_tpa, &acd->ip.s_addr, sizeof(uint32_t));
+
+        if (spa)
+                memcpy(arp.arp_spa, &spa->s_addr, sizeof(spa->s_addr));
+
+        r = sendto(acd->fd_socket, &arp, sizeof(arp), 0, (struct sockaddr *)&address, sizeof(address));
+        if (r < 0)
+                return -errno;
+
+        return 0;
+}
+
 static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
+        int r;
+
+        switch (acd->state) {
+        case N_ACD_STATE_PROBING:
+                /*
+                 * We are still PROBING. We send 3 probes with a random timeout
+                 * scheduled between each. If, after a fixed timeout, we did
+                 * not receive any conflict we consider the probing successful.
+                 */
+                if (acd->n_iteration >= N_ACD_RFC_PROBE_NUM) {
+                        /*
+                         * All 3 probes succeeded and we waited enough to
+                         * consider this address usable by now. Do not announce
+                         * the address, yet. We must first give the caller a
+                         * chance to configure the address (so they can answer
+                         * ARP requests), before announcing it. But our
+                         * callbacks are not necessarily synchronous (we want
+                         * to allow IPC there), so just notify the caller and
+                         * wait for further instructions, thus effectively
+                         * increasing the probe-wait.
+                         */
+                        acd->fn(acd, acd->userdata, N_ACD_EVENT_READY, NULL);
+                } else {
+                        /*
+                         * We have not sent all 3 probes, yet. A timer fired,
+                         * so we are ready to send the next probe. If this is
+                         * the third probe, schedule a timer for ANNOUNCE_WAIT
+                         * to give other peers a chance to answer. If this is
+                         * not the third probe, wait between PROBE_MIN and
+                         * PROBE_MAX for the next probe.
+                         */
+
+                        r = n_acd_send(acd, NULL);
+                        if (r < 0)
+                                return r;
+
+                        if (++acd->n_iteration >= N_ACD_RFC_PROBE_NUM)
+                                r = n_acd_schedule(acd, N_ACD_RFC_ANNOUNCE_WAIT_USEC, 0);
+                        else
+                                r = n_acd_schedule(acd, N_ACD_RFC_PROBE_MIN_USEC,
+                                                   N_ACD_RFC_PROBE_MAX_USEC - N_ACD_RFC_PROBE_MIN_USEC);
+                        if (r < 0)
+                                return r;
+                }
+
+                break;
+
+        case N_ACD_STATE_ANNOUNCING:
+                /*
+                 * We are ANNOUNCING, meaning the caller configured the address
+                 * on the interface and is actively using it. We send 3
+                 * announcements out, in a short interval, and then just
+                 * perform passive conflict detection.
+                 * Note that once all 3 announcements are sent, we no longer
+                 * schedule a timer, so this part should not trigger, anymore.
+                 */
+
+                r = n_acd_send(acd, &acd->ip);
+                if (r < 0)
+                        return r;
+
+                if (++acd->n_iteration < N_ACD_RFC_ANNOUNCE_NUM) {
+                        r = n_acd_schedule(acd, N_ACD_RFC_ANNOUNCE_WAIT_USEC, 0);
+                        if (r < 0)
+                                return r;
+                }
+
+                break;
+
+        case N_ACD_STATE_INIT:
+        case N_ACD_STATE_DOWN:
+        default:
+                /*
+                 * There are no timeouts in these states. If we trigger one,
+                 * something is fishy. Let the caller deal with this.
+                 */
+                return -EIO;
+        }
+
+        return 0;
+}
+
+static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
+        struct timespec ts;
+        bool hard_conflict;
+        uint64_t now;
+        int r;
+
+        /*
+         * Via BPF we discard any non-conflict packets. There are only 2 types
+         * that can pass: A conflict on the Sender Protocol Address, or a
+         * conflict on the Target Protocol Address.
+         *
+         * The former we call a hard-conflict. It implies that the sender uses
+         * the address already. We must always catch this and in some way react
+         * to it. Any kind, REQUEST or REPLY must be caught (though it is
+         * unlikely that we ever catch REPLIES since they tend to be unicasts).
+         *
+         * However, in case the Target Protocol Address matches, we just know
+         * that somebody is looking for the address. Hence, we must also check
+         * that the packet is an ARP-Probe (Sender Protocol Address is 0). If
+         * it is, it means someone else does ACD on our address. We call this a
+         * soft conflict.
+         */
+        if (!memcmp(packet->arp_spa, (uint8_t[4]){ }, sizeof(packet->arp_spa)) &&
+            !memcmp(packet->arp_tpa, &acd->ip.s_addr, sizeof(packet->arp_tpa)) &&
+            packet->ea_hdr.ar_op == ARPOP_REQUEST) {
+                hard_conflict = false;
+        } else if (!memcmp(packet->arp_spa, &acd->ip.s_addr, sizeof(packet->arp_spa))) {
+                hard_conflict = true;
+        } else {
+                /*
+                 * Ignore anything that is specific enough to match the BPF
+                 * filter, but is none of the conflicts described above.
+                 */
+                return 0;
+        }
+
+        switch (acd->state) {
+        case N_ACD_STATE_PROBING:
+                /*
+                 * Regardless whether this is a hard or soft conflict, we must
+                 * treat this as a probe failure. That is, notify the caller of
+                 * the conflict and wait for further instructions. We do not
+                 * react to this, until the caller tells us what to do. But we
+                 * immediately disable the timer, since there is no point in
+                 * continuing the probing.
+                 */
+                timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+                acd->fn(acd, acd->userdata, N_ACD_EVENT_USED, packet);
+                break;
+
+        case N_ACD_STATE_ANNOUNCING:
+                /*
+                 * We were already instructed to announce the address, which
+                 * means the address is configured and in use. Hence, the
+                 * caller is responsible to serve regular ARP queries. Meaning,
+                 * we can ignore any soft conflicts (other peers doing ACD).
+                 *
+                 * But if we see a hard-conflict, we either defend the address
+                 * according to the caller's instructions, or we report the
+                 * conflict and bail out.
+                 */
+
+                if (!hard_conflict)
+                        break;
+
+                if (acd->defend == N_ACD_DEFEND_NEVER) {
+                        timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+                        acd->fn(acd, acd->userdata, N_ACD_EVENT_CONFLICT, packet);
+                } else {
+                        r = clock_gettime(CLOCK_BOOTTIME, &ts);
+                        if (r < 0)
+                                return -errno;
+
+                        now = ts.tv_sec * UINT64_C(1000000) + ts.tv_nsec / UINT64_C(1000);
+                        if (now > acd->last_defend + N_ACD_RFC_DEFEND_INTERVAL_USEC) {
+                                r = n_acd_send(acd, &acd->ip);
+                                if (r < 0)
+                                        return r;
+
+                                acd->last_defend = now;
+                                acd->fn(acd, acd->userdata, N_ACD_EVENT_DEFENDED, packet);
+                        } else if (acd->defend == N_ACD_DEFEND_ONCE) {
+                                timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+                                acd->fn(acd, acd->userdata, N_ACD_EVENT_CONFLICT, packet);
+                        } else {
+                                acd->fn(acd, acd->userdata, N_ACD_EVENT_DEFENDED, packet);
+                        }
+                }
+
+                break;
+
+        case N_ACD_STATE_INIT:
+        case N_ACD_STATE_DOWN:
+        default:
+                /*
+                 * The socket should not be dispatched in those states, since
+                 * it is neither allocated nor added to epoll. Fail hard if we
+                 * trigger this somehow.
+                 */
+                return -EIO;
+        }
+
         return 0;
 }
 
@@ -297,6 +518,75 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
         return 0;
 }
 
+static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
+        struct ether_arp packet;
+        ssize_t l;
+
+        /*
+         * Regardless whether EPOLLIN is set in @event->events, we always
+         * invoke recv(2). This is a safety-net for sockets, which always fetch
+         * queued errors on all syscalls. That means, if anything failed on the
+         * socket, we will be notified via recv(2). This simplifies the code
+         * and avoid magic EPOLLIN/ERR/HUP juggling.
+         *
+         * Note that we must use recv(2) over read(2), since the latter cannot
+         * deal with empty packets properly.
+         */
+        l = recv(acd->fd_socket, &packet, sizeof(packet), MSG_TRUNC);
+        if (l == (ssize_t)sizeof(packet)) {
+                /*
+                 * We read a full ARP packet. We never fall-through to EPOLLHUP
+                 * handling, as we always must drain buffers first.
+                 */
+                return n_acd_handle_packet(acd, &packet);
+        } else if (l >= 0) {
+                /*
+                 * The BPF filter discards wrong packets, so error out
+                 * if something slips through for any reason. Don't silently
+                 * ignore it, since we explicitly want to know if something
+                 * went fishy.
+                 */
+                return -EIO;
+        } else if (errno == ENETDOWN || errno == ENXIO) {
+                /*
+                 * We get ENETDOWN if the network-device goes down or is
+                 * removed. ENXIO might happen on async send-operations if the
+                 * network-device was unplugged and thus the kernel is no
+                 * longer aware of it.
+                 * In any case, we do not allow proceeding with this socket. We
+                 * stop the engine and notify the user gracefully.
+                 */
+                timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_socket, NULL);
+                acd->state = N_ACD_STATE_DOWN;
+                acd->n_iteration = 0;
+
+                acd->fn(acd, acd->userdata, N_ACD_EVENT_DOWN, NULL);
+                return 0;
+        } else if (errno != EAGAIN) {
+                /*
+                 * Cannot dispatch the packet. This might be due to OOM, HUP,
+                 * or something else. We cannot handle it gracefully so forward
+                 * to the caller.
+                 */
+                return -errno;
+        }
+
+        /*
+         * We cannot read data from the socket (we got EAGAIN). As a safety net
+         * check for EPOLLHUP/ERR. Those cannot be disabled with epoll, so we
+         * must make sure to not busy-loop by ignoring them. Note that we know
+         * recv(2) on sockets to return an error if either of these epoll-flags
+         * is set. Hence, if we did not handle it above, we have no other way
+         * but treating those flags as fatal errors and returning them to the
+         * caller.
+         */
+        if (event->events & (EPOLLHUP | EPOLLERR))
+                return -EIO;
+
+        return 0;
+}
+
 _public_ int n_acd_dispatch(NAcd *acd) {
         struct epoll_event events[2];
         int r, n, i;
@@ -309,6 +599,9 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                 switch (events[i].data.u32) {
                 case N_ACD_EPOLL_TIMER:
                         r = n_acd_dispatch_timer(acd, events + i);
+                        break;
+                case N_ACD_EPOLL_SOCKET:
+                        r = n_acd_dispatch_socket(acd, events + i);
                         break;
                 default:
                         r = 0;
@@ -480,12 +773,16 @@ _public_ int n_acd_start(NAcd *acd, NAcdFn fn, void *userdata) {
         if (r < 0)
                 goto error;
 
-        r = n_acd_schedule(acd, 0, 0);
+        r = n_acd_schedule(acd, 0, N_ACD_RFC_PROBE_WAIT_USEC);
         if (r < 0)
                 goto error;
 
         acd->fn = fn;
         acd->userdata = userdata;
+        acd->state = N_ACD_STATE_PROBING;
+        acd->defend = N_ACD_DEFEND_NEVER;
+        acd->n_iteration = 0;
+        acd->last_defend = 0;
         return 0;
 
 error:
@@ -497,6 +794,9 @@ _public_ void n_acd_stop(NAcd *acd) {
         acd->fn = NULL;
         acd->userdata = NULL;
         acd->state = N_ACD_STATE_INIT;
+        acd->defend = N_ACD_DEFEND_NEVER;
+        acd->n_iteration = 0;
+        acd->last_defend = 0;
         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
 
         if (acd->fd_socket >= 0) {
@@ -508,5 +808,27 @@ _public_ void n_acd_stop(NAcd *acd) {
 }
 
 _public_ int n_acd_announce(NAcd *acd, unsigned int defend) {
+        int r;
+
+        if (defend >= _N_ACD_DEFEND_N)
+                return -EINVAL;
+        if (!n_acd_is_running(acd))
+                return -ESHUTDOWN;
+        if (acd->state == N_ACD_STATE_DOWN)
+                return -ENETDOWN;
+
+        /*
+         * Instead of sending the first probe here, we schedule an idle timer.
+         * This avoids possibly recursing into the user callback. We should
+         * never trigger callbacks from arbitrary stacks, but always restrict
+         * them to the dispatcher.
+         */
+        r = n_acd_schedule(acd, 0, 0);
+        if (r < 0)
+                return r;
+
+        acd->state = N_ACD_STATE_ANNOUNCING;
+        acd->defend = defend;
+        acd->n_iteration = 0;
         return 0;
 }
