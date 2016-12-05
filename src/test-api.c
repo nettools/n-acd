@@ -7,6 +7,18 @@
 #include <stdlib.h>
 #include "test.h"
 
+static void test_api_constants(void) {
+        assert(N_ACD_DEFEND_NEVER != _N_ACD_DEFEND_N);
+        assert(N_ACD_DEFEND_ONCE != _N_ACD_DEFEND_N);
+        assert(N_ACD_DEFEND_ALWAYS != _N_ACD_DEFEND_N);
+
+        assert(N_ACD_EVENT_READY != _N_ACD_EVENT_N);
+        assert(N_ACD_EVENT_USED != _N_ACD_EVENT_N);
+        assert(N_ACD_EVENT_DEFENDED != _N_ACD_EVENT_N);
+        assert(N_ACD_EVENT_CONFLICT != _N_ACD_EVENT_N);
+        assert(N_ACD_EVENT_DOWN != _N_ACD_EVENT_N);
+}
+
 static void test_api_management(void) {
         NAcd *acd = NULL;
         int r;
@@ -53,6 +65,7 @@ static void test_api_configuration(void) {
 }
 
 static void test_api_runtime(void) {
+        NAcdFn fn = NULL;
         NAcd *acd;
         int r;
 
@@ -67,7 +80,7 @@ static void test_api_runtime(void) {
         assert(!r);
         r = n_acd_dispatch(acd);
         assert(r >= 0);
-        r = n_acd_start(acd, NULL, NULL);
+        r = n_acd_start(acd, fn, NULL);
         assert(r < 0);
         n_acd_stop(acd);
         r = n_acd_announce(acd, N_ACD_DEFEND_NEVER);
@@ -77,6 +90,7 @@ static void test_api_runtime(void) {
 }
 
 int main(int argc, char **argv) {
+        test_api_constants();
         test_api_management();
         test_api_configuration();
         test_api_runtime();
