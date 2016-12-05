@@ -40,7 +40,7 @@ struct NAcd {
         /* configuration */
         int ifindex;
         struct ether_addr mac;
-        struct in_addr address;
+        struct in_addr ip;
 
         /* runtime */
         NAcdFn fn;
@@ -142,8 +142,8 @@ _public_ void n_acd_get_mac(NAcd *acd, struct ether_addr *macp) {
         memcpy(macp, &acd->mac, sizeof(acd->mac));
 }
 
-_public_ void n_acd_get_address(NAcd *acd, struct in_addr *addressp) {
-        memcpy(addressp, &acd->address, sizeof(acd->address));
+_public_ void n_acd_get_ip(NAcd *acd, struct in_addr *ipp) {
+        memcpy(ipp, &acd->ip, sizeof(acd->ip));
 }
 
 _public_ int n_acd_set_ifindex(NAcd *acd, int ifindex) {
@@ -166,13 +166,13 @@ _public_ int n_acd_set_mac(NAcd *acd, const struct ether_addr *mac) {
         return 0;
 }
 
-_public_ int n_acd_set_address(NAcd *acd, const struct in_addr *address) {
-        if (!address->s_addr)
+_public_ int n_acd_set_ip(NAcd *acd, const struct in_addr *ip) {
+        if (!ip->s_addr)
                 return -EINVAL;
         if (n_acd_is_running(acd))
                 return -EBUSY;
 
-        memcpy(&acd->address, address, sizeof(acd->address));
+        memcpy(&acd->ip, ip, sizeof(acd->ip));
         return 0;
 }
 
@@ -350,13 +350,13 @@ static int n_acd_bind_socket(NAcd *acd, int s) {
                  * equal to the one we care about. Again, immediates must be
                  * given in native-endian.
                  */
-                BPF_STMT(BPF_LD + BPF_IMM, be32toh(acd->address.s_addr)),                                       /* A <- clients IP */
+                BPF_STMT(BPF_LD + BPF_IMM, be32toh(acd->ip.s_addr)),                                            /* A <- clients IP */
                 BPF_STMT(BPF_MISC + BPF_TAX, 0),                                                                /* X <- A */
                 BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct ether_arp, arp_spa)),                        /* A <- SPA */
                 BPF_STMT(BPF_ALU + BPF_XOR + BPF_X, 0),                                                         /* X xor A */
                 BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, 0, 0, 1),                                                   /* A == 0 ? */
                 BPF_STMT(BPF_RET + BPF_K, 65535),                                                               /* return all */
-                BPF_STMT(BPF_LD + BPF_IMM, be32toh(acd->address.s_addr)),                                       /* A <- clients IP */
+                BPF_STMT(BPF_LD + BPF_IMM, be32toh(acd->ip.s_addr)),                                            /* A <- clients IP */
                 BPF_STMT(BPF_MISC + BPF_TAX, 0),                                                                /* X <- A */
                 BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct ether_arp, arp_tpa)),                        /* A <- TPA */
                 BPF_STMT(BPF_ALU + BPF_XOR + BPF_X, 0),                                                         /* X xor A */
@@ -434,7 +434,7 @@ _public_ int n_acd_start(NAcd *acd, NAcdFn fn, void *userdata) {
                 return -EBUSY;
         if (acd->ifindex < 0 ||
             !memcmp(acd->mac.ether_addr_octet, (uint8_t[ETH_ALEN]){ }, ETH_ALEN) ||
-            !acd->address.s_addr)
+            !acd->ip.s_addr)
                 return -EBADRQC;
 
         r = n_acd_setup_socket(acd);
