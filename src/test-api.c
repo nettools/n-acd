@@ -51,7 +51,7 @@ static void test_api_configuration(void) {
         assert(r >= 0);
         r = n_acd_set_mac(acd, &(struct ether_addr){ { 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54 } });
         assert(r >= 0);
-        r = n_acd_set_ip(acd, &(struct in_addr){ htons((127 << 24) | (1 << 0)) });
+        r = n_acd_set_ip(acd, &(struct in_addr){ htobe32((127 << 24) | (1 << 0)) });
         assert(r >= 0);
 
         n_acd_get_ifindex(acd, &ifindex);
@@ -59,7 +59,7 @@ static void test_api_configuration(void) {
         n_acd_get_mac(acd, &mac);
         assert(!memcmp(mac.ether_addr_octet, (uint8_t[ETH_ALEN]){ 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54 }, ETH_ALEN));
         n_acd_get_ip(acd, &ip);
-        assert(ip.s_addr == htons((127 << 24) | (1 << 0)));
+        assert(ip.s_addr == htobe32((127 << 24) | (1 << 0)));
 
         n_acd_unref(acd);
 }

@@ -27,7 +27,7 @@ static void test_unused(int ifindex, const struct ether_addr *mac) {
         assert(r >= 0);
         r = n_acd_set_mac(acd, mac);
         assert(r >= 0);
-        r = n_acd_set_ip(acd, &(struct in_addr){ htons((192 << 24) | (168 << 16) | (1 << 0)) });
+        r = n_acd_set_ip(acd, &(struct in_addr){ htobe32((192 << 24) | (168 << 16) | (1 << 0)) });
         assert(r >= 0);
 
         n_acd_get_fd(acd, &fd);
