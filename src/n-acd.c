@@ -404,7 +404,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
          */
         if (!memcmp(packet->arp_spa, (uint8_t[4]){ }, sizeof(packet->arp_spa)) &&
             !memcmp(packet->arp_tpa, &acd->ip.s_addr, sizeof(packet->arp_tpa)) &&
-            packet->ea_hdr.ar_op == ARPOP_REQUEST) {
+            packet->ea_hdr.ar_op == htobe16(ARPOP_REQUEST)) {
                 hard_conflict = false;
         } else if (!memcmp(packet->arp_spa, &acd->ip.s_addr, sizeof(packet->arp_spa))) {
                 hard_conflict = true;
