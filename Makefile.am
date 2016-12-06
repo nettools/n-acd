@@ -77,6 +77,12 @@ test_basic_SOURCES = src/test-basic.c
 test_basic_LDADD = libnacd.a
 
 # ------------------------------------------------------------------------------
+# test-twice
+
+test_twice_SOURCES = src/test-twice.c
+test_twice_LDADD = libnacd.a
+
+# ------------------------------------------------------------------------------
 # test-unused
 
 test_unused_SOURCES = src/test-unused.c
@@ -91,6 +97,7 @@ SOLIBRARIES = libnacd.so.0
 default_tests = \
 	test-api \
 	test-basic \
+	test-twice \
 	test-unused
 
 # ------------------------------------------------------------------------------
