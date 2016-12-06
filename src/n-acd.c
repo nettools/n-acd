@@ -697,9 +697,13 @@ _public_ int n_acd_dispatch(NAcd *acd) {
         struct epoll_event events[2];
         int n, i, r = 0;
 
+        n_acd_ref(acd);
+
         n = epoll_wait(acd->fd_epoll, events, sizeof(events) / sizeof(*events), 0);
-        if (n < 0)
-                return -errno;
+        if (n < 0) {
+                r = -errno;
+                goto exit;
+        }
 
         for (i = 0; i < n; ++i) {
                 switch (events[i].data.u32) {
@@ -743,6 +747,8 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                 r = 0;
         }
 
+exit:
+        n_acd_unref(acd);
         return r;
 }
 
