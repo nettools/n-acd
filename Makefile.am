@@ -77,6 +77,12 @@ test_basic_SOURCES = src/test-basic.c
 test_basic_LDADD = libnacd.a
 
 # ------------------------------------------------------------------------------
+# test-unused
+
+test_unused_SOURCES = src/test-unused.c
+test_unused_LDADD = libnacd.a
+
+# ------------------------------------------------------------------------------
 # targets
 
 include_HEADERS = src/n-acd.h
@@ -84,7 +90,8 @@ noinst_LIBRARIES = libnacd.a
 SOLIBRARIES = libnacd.so.0
 default_tests = \
 	test-api \
-	test-basic
+	test-basic \
+	test-unused
 
 # ------------------------------------------------------------------------------
 # support for $(SOLIBRARIES) (must be after its assignment)
