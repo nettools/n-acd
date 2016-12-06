@@ -24,6 +24,7 @@
 #include <netinet/if_ether.h>
 #include <netinet/in.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/auxv.h>
@@ -86,6 +87,7 @@ struct NAcd {
 };
 
 _public_ int n_acd_new(NAcd **acdp) {
+        struct timespec ts;
         NAcd *acd;
         void *p;
         int r;
@@ -110,6 +112,14 @@ _public_ int n_acd_new(NAcd **acdp) {
         p = (void *)getauxval(AT_RANDOM);
         if (p)
                 acd->seed = *(unsigned int *)p;
+
+        r = clock_gettime(CLOCK_BOOTTIME, &ts);
+        if (r < 0) {
+                r = -errno;
+                goto error;
+        }
+
+        acd->seed ^= ts.tv_nsec ^ ts.tv_sec;
 
         acd->fd_epoll = epoll_create1(EPOLL_CLOEXEC);
         if (acd->fd_epoll < 0) {
