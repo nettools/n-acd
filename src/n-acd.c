@@ -269,6 +269,18 @@ _public_ int n_acd_set_ip(NAcd *acd, const struct in_addr *ip) {
         return 0;
 }
 
+static int n_acd_now(uint64_t *nowp) {
+        struct timespec ts;
+        int r;
+
+        r = clock_gettime(CLOCK_BOOTTIME, &ts);
+        if (r < 0)
+                return -errno;
+
+        *nowp = ts.tv_sec * UINT64_C(1000000) + ts.tv_nsec / UINT64_C(1000);
+        return 0;
+}
+
 static int n_acd_schedule(NAcd *acd, uint64_t u_timeout, unsigned int u_jitter) {
         uint64_t u_next = u_timeout;
         int r;
@@ -418,7 +430,6 @@ static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
 }
 
 static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
-        struct timespec ts;
         bool hard_conflict;
         uint64_t now;
         int r;
@@ -453,6 +464,10 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                 return 0;
         }
 
+        r = n_acd_now(&now);
+        if (r < 0)
+                return -errno;
+
         switch (acd->state) {
         case N_ACD_STATE_PROBING:
                 /*
@@ -486,11 +501,6 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
                         acd->fn(acd, acd->userdata, N_ACD_EVENT_CONFLICT, packet);
                 } else {
-                        r = clock_gettime(CLOCK_BOOTTIME, &ts);
-                        if (r < 0)
-                                return -errno;
-
-                        now = ts.tv_sec * UINT64_C(1000000) + ts.tv_nsec / UINT64_C(1000);
                         if (now > acd->last_defend + N_ACD_RFC_DEFEND_INTERVAL_USEC) {
                                 r = n_acd_send(acd, &acd->ip);
                                 if (r < 0)
