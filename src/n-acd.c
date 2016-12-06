@@ -416,6 +416,7 @@ static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
                          * increasing the probe-wait.
                          */
                         acd->fn(acd, acd->userdata, N_ACD_EVENT_READY, NULL);
+                        return 1;
                 } else {
                         /*
                          * We have not sent all 3 probes, yet. A timer fired,
@@ -528,7 +529,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                 n_acd_remember_conflict(acd, now);
                 timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
                 acd->fn(acd, acd->userdata, N_ACD_EVENT_USED, packet);
-                break;
+                return 1;
 
         case N_ACD_STATE_ANNOUNCING:
                 /*
@@ -549,6 +550,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                         n_acd_remember_conflict(acd, now);
                         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
                         acd->fn(acd, acd->userdata, N_ACD_EVENT_CONFLICT, packet);
+                        return 1;
                 } else {
                         if (now > acd->last_defend + N_ACD_RFC_DEFEND_INTERVAL_USEC) {
                                 r = n_acd_send(acd, &acd->ip);
@@ -557,12 +559,15 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
 
                                 acd->last_defend = now;
                                 acd->fn(acd, acd->userdata, N_ACD_EVENT_DEFENDED, packet);
+                                return 1;
                         } else if (acd->defend == N_ACD_DEFEND_ONCE) {
                                 n_acd_remember_conflict(acd, now);
                                 timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
                                 acd->fn(acd, acd->userdata, N_ACD_EVENT_CONFLICT, packet);
+                                return 1;
                         } else {
                                 acd->fn(acd, acd->userdata, N_ACD_EVENT_DEFENDED, packet);
+                                return 1;
                         }
                 }
 
@@ -709,7 +714,7 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                         break;
                 }
 
-                if (r < 0)
+                if (r != 0)
                         break;
         }
 
@@ -725,6 +730,16 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                 acd->state = N_ACD_STATE_DOWN;
                 acd->n_iteration = 0;
                 acd->fn(acd, acd->userdata, N_ACD_EVENT_DOWN, NULL);
+                r = 0;
+        } else if (r > 0) {
+                /*
+                 * Dispatchers return >0 whenever they raised a user callback.
+                 * We must stop processing our events in that case and return
+                 * to the caller to let them deal with any other higher
+                 * priority events. Furthermore, we want to explicitly allow
+                 * modifying the ACD context in the callback, so we better
+                 * return, anyway.
+                 */
                 r = 0;
         }
 
