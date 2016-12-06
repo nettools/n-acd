@@ -142,6 +142,9 @@ _public_ int n_acd_new(NAcd **acdp) {
          * We need random jitter for all timeouts when handling ARP probes. Use
          * AT_RANDOM to get a seed for rand_r(3p), if available (should always
          * be available on linux). See the time-out scheduler for details.
+         * Additionally, we include the current time in the seed. This avoids
+         * using the same jitter in case you run multiple ACD engines in the
+         * same process.
          */
         p = (void *)getauxval(AT_RANDOM);
         if (p)
