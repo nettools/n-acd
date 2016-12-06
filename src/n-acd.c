@@ -333,7 +333,7 @@ static int n_acd_send(NAcd *acd, const struct in_addr *spa) {
                 .ea_hdr.ar_pln = sizeof(uint32_t),
                 .ea_hdr.ar_op = htobe16(ARPOP_REQUEST),
         };
-        int r;
+        ssize_t l;
 
         memcpy(arp.arp_sha, acd->mac.ether_addr_octet, ETH_ALEN);
         memcpy(arp.arp_tpa, &acd->ip.s_addr, sizeof(uint32_t));
@@ -341,11 +341,43 @@ static int n_acd_send(NAcd *acd, const struct in_addr *spa) {
         if (spa)
                 memcpy(arp.arp_spa, &spa->s_addr, sizeof(spa->s_addr));
 
-        r = sendto(acd->fd_socket, &arp, sizeof(arp), 0, (struct sockaddr *)&address, sizeof(address));
-        if (r < 0)
-                return -errno;
+        l = sendto(acd->fd_socket, &arp, sizeof(arp), MSG_NOSIGNAL, (struct sockaddr *)&address, sizeof(address));
+        if (l == (ssize_t)sizeof(arp)) {
+                /* Packet was properly sent. */
+                return 0;
+        } else if (l >= 0) {
+                /*
+                 * Ugh. The packet was truncated. This should not happen, but
+                 * lets just pretend the packet was dropped.
+                 */
+                return 0;
+        } else if (errno == EAGAIN || errno == ENOBUFS) {
+                /*
+                 * In case the output buffer is full, the packet is silently
+                 * dropped. This is just as if the physical layer happened to
+                 * drop the packet. We are not on a reliable medium, so no
+                 * reason to pretend we are.
+                 */
+                return 0;
+        } else if (errno == ENETDOWN || errno == ENXIO) {
+                /*
+                 * We get ENETDOWN if the network-device goes down or is
+                 * removed. ENXIO might happen on async send-operations if the
+                 * network-device was unplugged and thus the kernel is no
+                 * longer aware of it.
+                 * In any case, we do not allow proceeding with this socket. We
+                 * stop the engine and notify the user gracefully.
+                 */
+                timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_socket, NULL);
+                acd->state = N_ACD_STATE_DOWN;
+                acd->n_iteration = 0;
 
-        return 0;
+                acd->fn(acd, acd->userdata, N_ACD_EVENT_DOWN, NULL);
+                return 0;
+        }
+
+        return -errno;
 }
 
 static void n_acd_remember_conflict(NAcd *acd, uint64_t now) {
