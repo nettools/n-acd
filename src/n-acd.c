@@ -38,16 +38,50 @@
 #define _public_ __attribute__((__visibility__("default")))
 
 /*
- * These parameters and timing intervals are taken directly from the RFC-5227.
- * See there for details why they were selected like this.
+ * These parameters and timing intervals specified in RFC-5227. The original
+ * values are:
+ *
+ *     PROBE_NUM                                3
+ *     PROBE_WAIT                               1s
+ *     PROBE_MIN                                1s
+ *     PROBE_MAX                                3s
+ *     ANNOUNCE_NUM                             3
+ *     ANNOUNCE_WAIT                            2s
+ *     ANNOUNCE_INTERVAL                        2s
+ *     MAX_CONFLICTS                            10
+ *     RATE_LIMIT_INTERVAL                      60s
+ *     DEFEND_INTERVAL                          10s
+ *
+ * If we assume a best-case and worst-case scenario for non-conflicted runs, we
+ * end up with a runtime between 4s and 9s to finish the probe. Then it still
+ * takes a fixed 4s to finish the announcements.
+ *
+ * RFC 5227 section 1.1:
+ *     [...] (Note that the values listed here are fixed constants; they are
+ *     not intended to be modifiable by implementers, operators, or end users.
+ *     These constants are given symbolic names here to facilitate the writing
+ *     of future standards that may want to reference this document with
+ *     different values for these named constants; however, at the present time
+ *     no such future standards exist.) [...]
+ *
+ * Unfortunately, no-one ever stepped up to write a "future standard" to revise
+ * the timings. A 9s timeout for successful link setups is not acceptable in
+ * 2016. Hence, we will just go forward and ignore the proposed values. On both
+ * wired and wireless local links round-trip latencies of below 3ms are common,
+ * while latencies above 10ms are rarely seen. We just go ahead and use an
+ * interval of 50ms to 10ms for the probes, plus a 200ms wait interval. This
+ * should properly honor slower networks, as well as recognize the need of the
+ * other peers to schedule the needed processes to handle the requests.
+ * If this annoys the hell out of you, file a bug report and we can make the
+ * speedup a configurable option of the context object.
  */
 #define N_ACD_RFC_PROBE_NUM                     (3)
-#define N_ACD_RFC_PROBE_WAIT_USEC               (UINT64_C(1000000)) /* 1s */
-#define N_ACD_RFC_PROBE_MIN_USEC                (UINT64_C(1000000)) /* 1s */
-#define N_ACD_RFC_PROBE_MAX_USEC                (UINT64_C(3000000)) /* 3s */
+#define N_ACD_RFC_PROBE_WAIT_USEC               (UINT64_C(50000)) /* 50ms */
+#define N_ACD_RFC_PROBE_MIN_USEC                (UINT64_C(50000)) /* 50ms */
+#define N_ACD_RFC_PROBE_MAX_USEC                (UINT64_C(100000)) /* 100ms */
 #define N_ACD_RFC_ANNOUNCE_NUM                  (3)
-#define N_ACD_RFC_ANNOUNCE_WAIT_USEC            (UINT64_C(2000000)) /* 2s */
-#define N_ACD_RFC_ANNOUNCE_INTERVAL_USEC        (UINT64_C(2000000)) /* 2s */
+#define N_ACD_RFC_ANNOUNCE_WAIT_USEC            (UINT64_C(200000)) /* 200ms */
+#define N_ACD_RFC_ANNOUNCE_INTERVAL_USEC        (UINT64_C(500000)) /* 500ms */
 #define N_ACD_RFC_MAX_CONFLICTS                 (10)
 #define N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC      (UINT64_C(60000000)) /* 60s */
 #define N_ACD_RFC_DEFEND_INTERVAL_USEC          (UINT64_C(10000000)) /* 10s */
