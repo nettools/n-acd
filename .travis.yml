@@ -13,4 +13,3 @@ script:
   - make check
   - make distcheck
   - sudo make check
-  - sudo make distcheck
