@@ -12,3 +12,5 @@ script:
   - make
   - make check
   - make distcheck
+  - sudo make check
+  - sudo make distcheck
