@@ -6,10 +6,19 @@ compiler:
   - gcc
   - clang
 
+#
+# Our test-suite requires root for almost all tests. Hence, only the last run
+# of 'make check' here actually does something. The others verify the
+# root-detection works properly and does not make the tests fail, but skipped.
+#
+# Furthermore, our tests depend on the ACD-engine timeouts. Hence, we want to
+# run all of them in parallel (regardless of the number of cores). Increase the
+# job-count of make here to at least the number of tests we have.
+#
 script:
   - ./autogen.sh
   - ./configure
   - make
   - make check
   - make distcheck
-  - sudo make check
+  - sudo make -j64 check
