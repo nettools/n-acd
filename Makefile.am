@@ -83,6 +83,12 @@ test_twice_SOURCES = src/test-twice.c
 test_twice_LDADD = libnacd.a
 
 # ------------------------------------------------------------------------------
+# test-unplug
+
+test_unplug_SOURCES = src/test-unplug.c
+test_unplug_LDADD = libnacd.a
+
+# ------------------------------------------------------------------------------
 # test-unused
 
 test_unused_SOURCES = src/test-unused.c
@@ -98,6 +104,7 @@ default_tests = \
 	test-api \
 	test-basic \
 	test-twice \
+	test-unplug \
 	test-unused
 
 # ------------------------------------------------------------------------------

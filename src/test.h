@@ -22,6 +22,23 @@
 #include <unistd.h>
 #include "n-acd.h"
 
+static inline void test_veth_cmd(int ifindex, const char *cmd) {
+        char *p, name[IF_NAMESIZE + 1] = {};
+        int r;
+
+        p = if_indextoname(ifindex, name);
+        assert(p);
+
+        r = asprintf(&p, "ip link set %s %s", name, cmd);
+        assert(r >= 0);
+
+        /* Again: Ewwww... */
+        r = system(p);
+        assert(r == 0);
+
+        free(p);
+}
+
 static inline void test_veth_new(int *parent_indexp,
                                  struct ether_addr *parent_macp,
                                  int *child_indexp,
