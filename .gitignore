@@ -25,6 +25,7 @@
 
 /test-api
 /test-basic
+/test-loopback
 /test-twice
 /test-unplug
 /test-unused
