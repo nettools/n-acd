@@ -22,6 +22,33 @@
 #include <unistd.h>
 #include "n-acd.h"
 
+static inline void test_if_query(const char *name, int *indexp, struct ether_addr *macp) {
+        struct ifreq ifr = {};
+        size_t l;
+        int r, s;
+
+        l = strlen(name);
+        assert(l <= IF_NAMESIZE);
+
+        if (indexp) {
+                *indexp = if_nametoindex(name);
+                assert(*indexp > 0);
+        }
+
+        if (macp) {
+                s = socket(AF_INET, SOCK_DGRAM, 0);
+                assert(s >= 0);
+
+                strncpy(ifr.ifr_name, name, l);
+                r = ioctl(s, SIOCGIFHWADDR, &ifr);
+                assert(r >= 0);
+
+                memcpy(macp->ether_addr_octet, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+
+                close(s);
+        }
+}
+
 static inline void test_veth_cmd(int ifindex, const char *cmd) {
         char *p, name[IF_NAMESIZE + 1] = {};
         int r;
@@ -43,8 +70,7 @@ static inline void test_veth_new(int *parent_indexp,
                                  struct ether_addr *parent_macp,
                                  int *child_indexp,
                                  struct ether_addr *child_macp) {
-        struct ifreq ifr;
-        int r, s;
+        int r;
 
         /* Eww... but it works. */
         r = system("ip link add type veth");
@@ -54,36 +80,8 @@ static inline void test_veth_new(int *parent_indexp,
         r = system("ip link set veth1 up");
         assert(r == 0);
 
-        s = socket(AF_INET, SOCK_DGRAM, 0);
-        assert(s >= 0);
-
-        if (parent_indexp) {
-                *parent_indexp = if_nametoindex("veth0");
-                assert(*parent_indexp > 0);
-        }
-
-        if (child_indexp) {
-                *child_indexp = if_nametoindex("veth1");
-                assert(*child_indexp > 0);
-        }
-
-        if (parent_macp) {
-                memset(&ifr, 0, sizeof(ifr));
-                strcpy(ifr.ifr_name, "veth0");
-                r = ioctl(s, SIOCGIFHWADDR, &ifr);
-                assert(r >= 0);
-                memcpy(parent_macp->ether_addr_octet, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
-        }
-
-        if (child_macp) {
-                memset(&ifr, 0, sizeof(ifr));
-                strcpy(ifr.ifr_name, "veth1");
-                r = ioctl(s, SIOCGIFHWADDR, &ifr);
-                assert(r >= 0);
-                memcpy(child_macp->ether_addr_octet, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
-        }
-
-        close(s);
+        test_if_query("veth0", parent_indexp, parent_macp);
+        test_if_query("veth1", child_indexp, child_macp);
 }
 
 static inline int test_setup(void) {
