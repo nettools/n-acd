@@ -116,8 +116,10 @@ struct NAcd {
         int fd_socket;
         unsigned int state;
         unsigned int n_iteration;
+        unsigned int n_conflicts;
         unsigned int defend;
         uint64_t last_defend;
+        uint64_t last_conflict;
 };
 
 _public_ int n_acd_new(NAcd **acdp) {
@@ -346,6 +348,13 @@ static int n_acd_send(NAcd *acd, const struct in_addr *spa) {
         return 0;
 }
 
+static void n_acd_remember_conflict(NAcd *acd, uint64_t now) {
+        if (++acd->n_conflicts >= N_ACD_RFC_MAX_CONFLICTS) {
+                acd->n_conflicts = N_ACD_RFC_MAX_CONFLICTS;
+                acd->last_conflict = now;
+        }
+}
+
 static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
         int r;
 
@@ -478,6 +487,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                  * immediately disable the timer, since there is no point in
                  * continuing the probing.
                  */
+                n_acd_remember_conflict(acd, now);
                 timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
                 acd->fn(acd, acd->userdata, N_ACD_EVENT_USED, packet);
                 break;
@@ -498,6 +508,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                         break;
 
                 if (acd->defend == N_ACD_DEFEND_NEVER) {
+                        n_acd_remember_conflict(acd, now);
                         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
                         acd->fn(acd, acd->userdata, N_ACD_EVENT_CONFLICT, packet);
                 } else {
@@ -509,6 +520,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                                 acd->last_defend = now;
                                 acd->fn(acd, acd->userdata, N_ACD_EVENT_DEFENDED, packet);
                         } else if (acd->defend == N_ACD_DEFEND_ONCE) {
+                                n_acd_remember_conflict(acd, now);
                                 timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
                                 acd->fn(acd, acd->userdata, N_ACD_EVENT_CONFLICT, packet);
                         } else {
@@ -815,6 +827,7 @@ error:
 }
 
 _public_ int n_acd_start(NAcd *acd, NAcdFn fn, void *userdata) {
+        uint64_t now, delay;
         int r;
 
         if (!fn)
@@ -830,7 +843,18 @@ _public_ int n_acd_start(NAcd *acd, NAcdFn fn, void *userdata) {
         if (r < 0)
                 goto error;
 
-        r = n_acd_schedule(acd, 0, N_ACD_RFC_PROBE_WAIT_USEC);
+        r = n_acd_now(&now);
+        if (r < 0) {
+                r = -errno;
+                goto error;
+        }
+
+        if (now < acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC)
+                delay = acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC - now;
+        else
+                delay = 0;
+
+        r = n_acd_schedule(acd, delay, N_ACD_RFC_PROBE_WAIT_USEC);
         if (r < 0)
                 goto error;
 
@@ -865,6 +889,7 @@ _public_ void n_acd_stop(NAcd *acd) {
 }
 
 _public_ int n_acd_announce(NAcd *acd, unsigned int defend) {
+        uint64_t now;
         int r;
 
         if (defend >= _N_ACD_DEFEND_N)
@@ -875,10 +900,25 @@ _public_ int n_acd_announce(NAcd *acd, unsigned int defend) {
                 return -ENETDOWN;
 
         /*
-         * Instead of sending the first probe here, we schedule an idle timer.
-         * This avoids possibly recursing into the user callback. We should
-         * never trigger callbacks from arbitrary stacks, but always restrict
-         * them to the dispatcher.
+         * Sending announcements means we finished probing and use the address
+         * now. We therefore reset the conflict counter in case we adhered to
+         * the rate-limit. Since probing is properly delayed, a well-behaving
+         * client will always reset the conflict counter here. However, if you
+         * force-use an address regardless of conflicts, then this will not
+         * trigger and the conflict counter stays untouched.
+         */
+        r = n_acd_now(&now);
+        if (r < 0)
+                return r;
+
+        if (now >= acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC)
+                acd->n_conflicts = 0;
+
+        /*
+         * Instead of sending the first announcement here, we schedule an idle
+         * timer. This avoids possibly recursing into the user callback. We
+         * should never trigger callbacks from arbitrary stacks, but always
+         * restrict them to the dispatcher.
          */
         r = n_acd_schedule(acd, 0, 0);
         if (r < 0)
