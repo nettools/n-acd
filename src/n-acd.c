@@ -17,6 +17,7 @@
 #include <assert.h>
 #include <endian.h>
 #include <errno.h>
+#include <limits.h>
 #include <linux/filter.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
@@ -85,6 +86,17 @@
 #define N_ACD_RFC_MAX_CONFLICTS                 (10)
 #define N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC      (UINT64_C(60000000)) /* 60s */
 #define N_ACD_RFC_DEFEND_INTERVAL_USEC          (UINT64_C(10000000)) /* 10s */
+
+/*
+ * Fake ENETDOWN error-code. We use this as replacement for known EFOOBAR error
+ * codes. It is explicitly chosen to be outside the known error-code range.
+ * Whenever we are deep down in a call-stack and notice a ENETDOWN error, we
+ * return this instead. It is caught by the top-level dispatcher and then
+ * properly handled.
+ * This avoids gracefully handling ENETDOWN in call-stacks, but then continuing
+ * with some work in the callers without noticing the soft failure.
+ */
+#define N_ACD_E_DOWN (INT_MAX)
 
 enum {
         N_ACD_EPOLL_TIMER,
@@ -368,13 +380,7 @@ static int n_acd_send(NAcd *acd, const struct in_addr *spa) {
                  * In any case, we do not allow proceeding with this socket. We
                  * stop the engine and notify the user gracefully.
                  */
-                timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_socket, NULL);
-                acd->state = N_ACD_STATE_DOWN;
-                acd->n_iteration = 0;
-
-                acd->fn(acd, acd->userdata, N_ACD_EVENT_DOWN, NULL);
-                return 0;
+                return -N_ACD_E_DOWN;
         }
 
         return -errno;
@@ -657,13 +663,7 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
                  * In any case, we do not allow proceeding with this socket. We
                  * stop the engine and notify the user gracefully.
                  */
-                timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_socket, NULL);
-                acd->state = N_ACD_STATE_DOWN;
-                acd->n_iteration = 0;
-
-                acd->fn(acd, acd->userdata, N_ACD_EVENT_DOWN, NULL);
-                return 0;
+                return -N_ACD_E_DOWN;
         } else if (errno != EAGAIN) {
                 /*
                  * Cannot dispatch the packet. This might be due to OOM, HUP,
@@ -690,7 +690,7 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
 
 _public_ int n_acd_dispatch(NAcd *acd) {
         struct epoll_event events[2];
-        int r, n, i;
+        int n, i, r = 0;
 
         n = epoll_wait(acd->fd_epoll, events, sizeof(events) / sizeof(*events), 0);
         if (n < 0)
@@ -710,10 +710,25 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                 }
 
                 if (r < 0)
-                        return r;
+                        break;
         }
 
-        return 0;
+        if (r == -N_ACD_E_DOWN) {
+                /*
+                 * N_ACD_E_DOWN is synthesized whenever we notice
+                 * ENETDOWN-related errors on the network interface. This
+                 * allows bailing out of deep call-paths and then handling the
+                 * error gracefully here.
+                 */
+                timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_socket, NULL);
+                acd->state = N_ACD_STATE_DOWN;
+                acd->n_iteration = 0;
+                acd->fn(acd, acd->userdata, N_ACD_EVENT_DOWN, NULL);
+                r = 0;
+        }
+
+        return r;
 }
 
 static int n_acd_bind_socket(NAcd *acd, int s) {
