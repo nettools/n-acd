@@ -515,7 +515,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
 
         r = n_acd_now(&now);
         if (r < 0)
-                return -errno;
+                return r;
 
         switch (acd->state) {
         case N_ACD_STATE_PROBING:
@@ -913,10 +913,8 @@ _public_ int n_acd_start(NAcd *acd, NAcdFn fn, void *userdata) {
                 goto error;
 
         r = n_acd_now(&now);
-        if (r < 0) {
-                r = -errno;
+        if (r < 0)
                 goto error;
-        }
 
         if (now < acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC)
                 delay = acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC - now;
