@@ -134,6 +134,17 @@ struct NAcd {
         uint64_t last_conflict;
 };
 
+static int n_acd_errno(void) {
+        /*
+         * Compilers continuously warn about uninitialized variables since they
+         * cannot deduce that `return -errno;` will always be negative. This
+         * small wrapper makes sure compilers figure that out. Use it as
+         * replacement for `errno` read access. Yes, it generates worse code,
+         * but only marginally and only affects slow-paths.
+         */
+        return abs(errno) ? : EIO;
+}
+
 _public_ int n_acd_new(NAcd **acdp) {
         struct timespec ts;
         NAcd *acd;
@@ -167,7 +178,7 @@ _public_ int n_acd_new(NAcd **acdp) {
 
         r = clock_gettime(CLOCK_BOOTTIME, &ts);
         if (r < 0) {
-                r = -errno;
+                r = -n_acd_errno();
                 goto error;
         }
 
@@ -175,13 +186,13 @@ _public_ int n_acd_new(NAcd **acdp) {
 
         acd->fd_epoll = epoll_create1(EPOLL_CLOEXEC);
         if (acd->fd_epoll < 0) {
-                r = -errno;
+                r = -n_acd_errno();
                 goto error;
         }
 
         acd->fd_timer = timerfd_create(CLOCK_BOOTTIME, TFD_CLOEXEC | TFD_NONBLOCK);
         if (acd->fd_timer < 0) {
-                r = -errno;
+                r = -n_acd_errno();
                 goto error;
         }
 
@@ -191,7 +202,7 @@ _public_ int n_acd_new(NAcd **acdp) {
                               .data.u32 = N_ACD_EPOLL_TIMER,
                       });
         if (r < 0) {
-                r = -errno;
+                r = -n_acd_errno();
                 goto error;
         }
 
@@ -290,7 +301,7 @@ static int n_acd_now(uint64_t *nowp) {
 
         r = clock_gettime(CLOCK_BOOTTIME, &ts);
         if (r < 0)
-                return -errno;
+                return -n_acd_errno();
 
         *nowp = ts.tv_sec * UINT64_C(1000000) + ts.tv_nsec / UINT64_C(1000);
         return 0;
@@ -326,7 +337,7 @@ static int n_acd_schedule(NAcd *acd, uint64_t u_timeout, unsigned int u_jitter) 
                                     .tv_nsec = u_next % UINT64_C(1000000) * UINT64_C(1000),
                             } }, NULL);
         if (r < 0)
-                return -errno;
+                return -n_acd_errno();
 
         return 0;
 }
@@ -384,7 +395,7 @@ static int n_acd_send(NAcd *acd, const struct in_addr *spa) {
                 return -N_ACD_E_DOWN;
         }
 
-        return -errno;
+        return -n_acd_errno();
 }
 
 static void n_acd_remember_conflict(NAcd *acd, uint64_t now) {
@@ -615,7 +626,7 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
                          * that we could gracefully handle. Fail hard and let
                          * the caller deal with it.
                          */
-                        return -errno;
+                        return -n_acd_errno();
                 }
         }
 
@@ -676,7 +687,7 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
                  * or something else. We cannot handle it gracefully so forward
                  * to the caller.
                  */
-                return -errno;
+                return -n_acd_errno();
         }
 
         /*
@@ -702,7 +713,7 @@ _public_ int n_acd_dispatch(NAcd *acd) {
 
         n = epoll_wait(acd->fd_epoll, events, sizeof(events) / sizeof(*events), 0);
         if (n < 0) {
-                r = -errno;
+                r = -n_acd_errno();
                 goto exit;
         }
 
@@ -853,7 +864,7 @@ static int n_acd_bind_socket(NAcd *acd, int s) {
          */
         r = setsockopt(s, SOL_SOCKET, SO_ATTACH_FILTER, &fprog, sizeof(fprog));
         if (r < 0)
-                return -errno;
+                return -n_acd_errno();
 
         /*
          * Bind the packet-socket to ETH_P_ARP and the specified network
@@ -861,7 +872,7 @@ static int n_acd_bind_socket(NAcd *acd, int s) {
          */
         r = bind(s, (struct sockaddr *)&address, sizeof(address));
         if (r < 0)
-                return -errno;
+                return -n_acd_errno();
 
         return 0;
 }
@@ -871,7 +882,7 @@ static int n_acd_setup_socket(NAcd *acd) {
 
         s = socket(PF_PACKET, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
         if (s < 0)
-                return -errno;
+                return -n_acd_errno();
 
         r = n_acd_bind_socket(acd, s);
         if (r < 0)
@@ -883,7 +894,7 @@ static int n_acd_setup_socket(NAcd *acd) {
                               .data.u32 = N_ACD_EPOLL_SOCKET,
                       });
         if (r < 0) {
-                r = -errno;
+                r = -n_acd_errno();
                 goto error;
         }
 
