@@ -18,6 +18,6 @@ before_script:
   - export PATH=$NINJADIR:$PATH
 
 script:
-  - meson bb
-  - ninja -C bb
-  - sudo MESON_TESTTHREADS=64 "$NINJADIR/ninja" -C bb test
+  - meson "build"
+  - ninja -C "build"
+  - sudo MESON_TESTTHREADS=64 "$NINJADIR/ninja" -C "build" test
