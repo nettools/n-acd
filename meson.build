@@ -3,7 +3,7 @@ project('n-acd',
         version: '1',
         license: 'Apache',
         default_options: [
-                'buildtype=plain',
+                'buildtype=release',
                 'c_std=c11',
         ])
 
