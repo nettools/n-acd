@@ -6,25 +6,18 @@ compiler:
   - gcc
   - clang
 
-before_install:
-  - sudo apt-get -qq update
-  - sudo apt-get install -y ninja-build python3-pip
-  - sudo pip3 install --upgrade pip
-  - sudo pip3 install meson
+install:
+  - export NINJADIR=$PWD/.tmpninja
+  - mkdir -p "$NINJADIR"
+  - curl -L "https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-linux.zip" -o "$NINJADIR/ninja-linux.zip"
+  - unzip "$NINJADIR/ninja-linux.zip" -d "$NINJADIR"
+  - pip3 install meson
 
-#
-# Our test-suite requires root for almost all tests. Hence, only the last run
-# of 'make check' here actually does something. The others verify the
-# root-detection works properly and does not make the tests fail, but skipped.
-#
-# Furthermore, our tests depend on the ACD-engine timeouts. Hence, we want to
-# run all of them in parallel (regardless of the number of cores). Increase the
-# job-count of make here to at least the number of tests we have.
-#
+before_script:
+  - export NINJADIR=$PWD/.tmpninja
+  - export PATH=$NINJADIR:$PATH
+
 script:
-  - ./autogen.sh
-  - ./configure
-  - make
-  - make check
-  - make distcheck
-  - sudo make -j64 check
+  - meson bb
+  - ninja -C bb
+  - sudo MESON_TESTTHREADS=64 "$NINJADIR/ninja" -C bb test
