@@ -7,17 +7,12 @@ compiler:
   - clang
 
 install:
-  - export NINJADIR=$PWD/.tmpninja
-  - mkdir -p "$NINJADIR"
-  - curl -L "https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-linux.zip" -o "$NINJADIR/ninja-linux.zip"
-  - unzip "$NINJADIR/ninja-linux.zip" -d "$NINJADIR"
+  - curl -L "https://github.com/ninja-build/ninja/releases/download/v1.7.2/ninja-linux.zip" -o "ninja-linux.zip"
+  - sudo unzip "ninja-linux.zip" -d "/usr/local/bin"
+  - sudo chmod 755 "/usr/local/bin/ninja"
   - pip3 install meson
-
-before_script:
-  - export NINJADIR=$PWD/.tmpninja
-  - export PATH=$NINJADIR:$PATH
 
 script:
   - meson "build"
   - ninja -C "build"
-  - sudo MESON_TESTTHREADS=64 "$NINJADIR/ninja" -C "build" test
+  - sudo MESON_TESTTHREADS=64 ninja -C "build" test
