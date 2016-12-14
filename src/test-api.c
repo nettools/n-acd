@@ -38,9 +38,10 @@ static void test_api_management(void) {
 
 static void test_api_configuration(void) {
         struct ether_addr mac;
+        unsigned int ifindex;
         struct in_addr ip;
         NAcd *acd;
-        int r, ifindex;
+        int r;
 
         /* {get,set}_{ifindex,mac,ip} */
 

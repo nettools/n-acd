@@ -118,7 +118,7 @@ struct NAcd {
         int fd_timer;
 
         /* configuration */
-        int ifindex;
+        unsigned int ifindex;
         struct ether_addr mac;
         struct in_addr ip;
 
@@ -158,7 +158,6 @@ _public_ int n_acd_new(NAcd **acdp) {
         acd->n_refs = 1;
         acd->fd_epoll = -1;
         acd->fd_timer = -1;
-        acd->ifindex = -1;
         acd->mac = (struct ether_addr){ { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff } };
         acd->fd_socket = -1;
         acd->state = N_ACD_STATE_INIT;
@@ -253,7 +252,7 @@ _public_ void n_acd_get_fd(NAcd *acd, int *fdp) {
         *fdp = acd->fd_epoll;
 }
 
-_public_ void n_acd_get_ifindex(NAcd *acd, int *ifindexp) {
+_public_ void n_acd_get_ifindex(NAcd *acd, unsigned int *ifindexp) {
         *ifindexp = acd->ifindex;
 }
 
@@ -265,8 +264,8 @@ _public_ void n_acd_get_ip(NAcd *acd, struct in_addr *ipp) {
         memcpy(ipp, &acd->ip, sizeof(acd->ip));
 }
 
-_public_ int n_acd_set_ifindex(NAcd *acd, int ifindex) {
-        if (ifindex < 0)
+_public_ int n_acd_set_ifindex(NAcd *acd, unsigned int ifindex) {
+        if (!ifindex)
                 return -EINVAL;
         if (n_acd_is_running(acd))
                 return -EBUSY;
@@ -914,7 +913,7 @@ _public_ int n_acd_start(NAcd *acd, NAcdFn fn, void *userdata) {
                 return -EINVAL;
         if (n_acd_is_running(acd))
                 return -EBUSY;
-        if (acd->ifindex < 0 ||
+        if (!acd->ifindex ||
             !memcmp(acd->mac.ether_addr_octet, (uint8_t[ETH_ALEN]){ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, ETH_ALEN) ||
             !acd->ip.s_addr)
                 return -EBADRQC;

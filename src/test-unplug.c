@@ -8,7 +8,8 @@
 #include "test.h"
 
 static void test_unplug_down_fn(NAcd *acd, void *userdata, unsigned int event, const struct ether_arp *conflict) {
-        int ifindex, *state = userdata;
+        unsigned int ifindex;
+        int *state = userdata;
 
         if (event == N_ACD_EVENT_DOWN) {
                 *state = 0;

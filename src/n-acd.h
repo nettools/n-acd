@@ -43,11 +43,11 @@ NAcd *n_acd_unref(NAcd *acd);
 
 bool n_acd_is_running(NAcd *acd);
 void n_acd_get_fd(NAcd *acd, int *fdp);
-void n_acd_get_ifindex(NAcd *acd, int *ifindexp);
+void n_acd_get_ifindex(NAcd *acd, unsigned int *ifindexp);
 void n_acd_get_mac(NAcd *acd, struct ether_addr *macp);
 void n_acd_get_ip(NAcd *acd, struct in_addr *ipp);
 
-int n_acd_set_ifindex(NAcd *acd, int ifindex);
+int n_acd_set_ifindex(NAcd *acd, unsigned int ifindex);
 int n_acd_set_mac(NAcd *acd, const struct ether_addr *mac);
 int n_acd_set_ip(NAcd *acd, const struct in_addr *ip);
 
