@@ -3,11 +3,13 @@
  *
  * This implements the main n-acd API. It is built around an epoll-fd to
  * encapsulate a timerfd+socket. The n-acd context has quite straightforward
- * lifetime rules. First, the parameters must be set by the caller, then the
- * engine is started on demand, and stopped if no longer needed. While stopped,
- * parameters may be changed for a next run.
+ * lifetime rules. The parameters must be set when the engine is started, and
+ * they can only be changed by stopping and restartding the engine. The engine
+ * is started on demand and stopped when no longer needed.
  * During the entire lifetime the context can be dispatched. That is, the
- * dispatcher does not have to be aware of the context state.
+ * dispatcher does not have to be aware of the context state. After each call
+ * to dispatch(), the caller must pop all pending events until -EAGAIN is
+ * returned.
  *
  * If a conflict is detected, the ACD engine reports to the caller and stops
  * the engine. The caller can now modify parameters and restart the engine, if
@@ -67,7 +69,7 @@
  *
  * Unfortunately, no-one ever stepped up to write a "future standard" to revise
  * the timings. A 9s timeout for successful link setups is not acceptable in
- * 2016. Hence, we will just go forward and ignore the proposed values. On both
+ * today. Hence, we will just go forward and ignore the proposed values. On both
  * wired and wireless local links round-trip latencies of below 3ms are common,
  * while latencies above 10ms are rarely seen. We just go ahead and use an
  * interval of 50ms to 10ms for the probes, plus a 200ms wait interval. This
@@ -107,24 +109,18 @@ enum {
         N_ACD_STATE_INIT,
         N_ACD_STATE_PROBING,
         N_ACD_STATE_ANNOUNCING,
-        N_ACD_STATE_DOWN,
 };
 
 struct NAcd {
         /* context */
-        unsigned long n_refs;
         unsigned int seed;
         int fd_epoll;
         int fd_timer;
 
         /* configuration */
-        unsigned int ifindex;
-        struct ether_addr mac;
-        struct in_addr ip;
+        NAcdConfig config;
 
         /* runtime */
-        NAcdFn fn;
-        void *userdata;
         int fd_socket;
         unsigned int state;
         unsigned int n_iteration;
@@ -132,6 +128,9 @@ struct NAcd {
         unsigned int defend;
         uint64_t last_defend;
         uint64_t last_conflict;
+
+        /* pending event */
+        NAcdEvent event;
 };
 
 static int n_acd_errno(void) {
@@ -155,13 +154,12 @@ _public_ int n_acd_new(NAcd **acdp) {
         if (!acd)
                 return -ENOMEM;
 
-        acd->n_refs = 1;
         acd->fd_epoll = -1;
         acd->fd_timer = -1;
-        acd->mac = (struct ether_addr){ { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff } };
         acd->fd_socket = -1;
         acd->state = N_ACD_STATE_INIT;
         acd->defend = N_ACD_DEFEND_NEVER;
+        acd->event.event = _N_ACD_EVENT_INVALID;
 
         /*
          * We need random jitter for all timeouts when handling ARP probes. Use
@@ -209,18 +207,12 @@ _public_ int n_acd_new(NAcd **acdp) {
         return 0;
 
 error:
-        n_acd_unref(acd);
+        n_acd_free(acd);
         return r;
 }
 
-_public_ NAcd *n_acd_ref(NAcd *acd) {
-        if (acd)
-                ++acd->n_refs;
-        return acd;
-}
-
-_public_ NAcd *n_acd_unref(NAcd *acd) {
-        if (!acd || --acd->n_refs)
+_public_ NAcd *n_acd_free(NAcd *acd) {
+        if (!acd)
                 return NULL;
 
         n_acd_stop(acd);
@@ -244,54 +236,8 @@ _public_ NAcd *n_acd_unref(NAcd *acd) {
         return NULL;
 }
 
-_public_ bool n_acd_is_running(NAcd *acd) {
-        return acd->state != N_ACD_STATE_INIT;
-}
-
 _public_ void n_acd_get_fd(NAcd *acd, int *fdp) {
         *fdp = acd->fd_epoll;
-}
-
-_public_ void n_acd_get_ifindex(NAcd *acd, unsigned int *ifindexp) {
-        *ifindexp = acd->ifindex;
-}
-
-_public_ void n_acd_get_mac(NAcd *acd, struct ether_addr *macp) {
-        memcpy(macp, &acd->mac, sizeof(acd->mac));
-}
-
-_public_ void n_acd_get_ip(NAcd *acd, struct in_addr *ipp) {
-        memcpy(ipp, &acd->ip, sizeof(acd->ip));
-}
-
-_public_ int n_acd_set_ifindex(NAcd *acd, unsigned int ifindex) {
-        if (!ifindex)
-                return -EINVAL;
-        if (n_acd_is_running(acd))
-                return -EBUSY;
-
-        acd->ifindex = ifindex;
-        return 0;
-}
-
-_public_ int n_acd_set_mac(NAcd *acd, const struct ether_addr *mac) {
-        if (!memcmp(mac->ether_addr_octet, (uint8_t[ETH_ALEN]){ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, ETH_ALEN))
-                return -EINVAL;
-        if (n_acd_is_running(acd))
-                return -EBUSY;
-
-        memcpy(&acd->mac, mac, sizeof(acd->mac));
-        return 0;
-}
-
-_public_ int n_acd_set_ip(NAcd *acd, const struct in_addr *ip) {
-        if (!ip->s_addr)
-                return -EINVAL;
-        if (n_acd_is_running(acd))
-                return -EBUSY;
-
-        memcpy(&acd->ip, ip, sizeof(acd->ip));
-        return 0;
 }
 
 static int n_acd_now(uint64_t *nowp) {
@@ -345,7 +291,7 @@ static int n_acd_send(NAcd *acd, const struct in_addr *spa) {
         struct sockaddr_ll address = {
                 .sll_family = AF_PACKET,
                 .sll_protocol = htobe16(ETH_P_ARP),
-                .sll_ifindex = acd->ifindex,
+                .sll_ifindex = acd->config.ifindex,
                 .sll_halen = ETH_ALEN,
                 .sll_addr = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff },
         };
@@ -358,8 +304,8 @@ static int n_acd_send(NAcd *acd, const struct in_addr *spa) {
         };
         ssize_t l;
 
-        memcpy(arp.arp_sha, acd->mac.ether_addr_octet, ETH_ALEN);
-        memcpy(arp.arp_tpa, &acd->ip.s_addr, sizeof(uint32_t));
+        memcpy(arp.arp_sha, acd->config.mac.ether_addr_octet, ETH_ALEN);
+        memcpy(arp.arp_tpa, &acd->config.ip.s_addr, sizeof(uint32_t));
 
         if (spa)
                 memcpy(arp.arp_spa, &spa->s_addr, sizeof(spa->s_addr));
@@ -426,8 +372,7 @@ static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
                          * wait for further instructions, thus effectively
                          * increasing the probe-wait.
                          */
-                        acd->fn(acd, acd->userdata, N_ACD_EVENT_READY, NULL);
-                        return 1;
+                        acd->event.event = N_ACD_EVENT_READY;
                 } else {
                         /*
                          * We have not sent all 3 probes, yet. A timer fired,
@@ -463,7 +408,7 @@ static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
                  * schedule a timer, so this part should not trigger, anymore.
                  */
 
-                r = n_acd_send(acd, &acd->ip);
+                r = n_acd_send(acd, &acd->config.ip);
                 if (r < 0)
                         return r;
 
@@ -476,7 +421,6 @@ static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
                 break;
 
         case N_ACD_STATE_INIT:
-        case N_ACD_STATE_DOWN:
         default:
                 /*
                  * There are no timeouts in these states. If we trigger one,
@@ -510,10 +454,10 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
          * soft conflict.
          */
         if (!memcmp(packet->arp_spa, (uint8_t[4]){ }, sizeof(packet->arp_spa)) &&
-            !memcmp(packet->arp_tpa, &acd->ip.s_addr, sizeof(packet->arp_tpa)) &&
+            !memcmp(packet->arp_tpa, &acd->config.ip.s_addr, sizeof(packet->arp_tpa)) &&
             packet->ea_hdr.ar_op == htobe16(ARPOP_REQUEST)) {
                 hard_conflict = false;
-        } else if (!memcmp(packet->arp_spa, &acd->ip.s_addr, sizeof(packet->arp_spa))) {
+        } else if (!memcmp(packet->arp_spa, &acd->config.ip.s_addr, sizeof(packet->arp_spa))) {
                 hard_conflict = true;
         } else {
                 /*
@@ -539,8 +483,12 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                  */
                 n_acd_remember_conflict(acd, now);
                 timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-                acd->fn(acd, acd->userdata, N_ACD_EVENT_USED, packet);
-                return 1;
+                acd->event.event = N_ACD_EVENT_USED;
+                acd->event.used.operation = be16toh(packet->ea_hdr.ar_op);
+                memcpy(&acd->event.used.sender, packet->arp_sha, sizeof(acd->event.used.sender));
+                memcpy(&acd->event.used.target, packet->arp_tpa, sizeof(acd->event.used.target));
+
+                break;
 
         case N_ACD_STATE_ANNOUNCING:
                 /*
@@ -560,32 +508,39 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                 if (acd->defend == N_ACD_DEFEND_NEVER) {
                         n_acd_remember_conflict(acd, now);
                         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-                        acd->fn(acd, acd->userdata, N_ACD_EVENT_CONFLICT, packet);
-                        return 1;
+                        acd->event.event = N_ACD_EVENT_CONFLICT;
+                        acd->event.conflict.operation = be16toh(packet->ea_hdr.ar_op);
+                        memcpy(&acd->event.conflict.sender, packet->arp_sha, sizeof(acd->event.conflict.sender));
+                        memcpy(&acd->event.conflict.target, packet->arp_tpa, sizeof(acd->event.conflict.target));
                 } else {
                         if (now > acd->last_defend + N_ACD_RFC_DEFEND_INTERVAL_USEC) {
-                                r = n_acd_send(acd, &acd->ip);
+                                r = n_acd_send(acd, &acd->config.ip);
                                 if (r < 0)
                                         return r;
 
                                 acd->last_defend = now;
-                                acd->fn(acd, acd->userdata, N_ACD_EVENT_DEFENDED, packet);
-                                return 1;
+                                acd->event.event = N_ACD_EVENT_DEFENDED;
+                                acd->event.defended.operation = be16toh(packet->ea_hdr.ar_op);
+                                memcpy(&acd->event.defended.sender, packet->arp_sha, sizeof(acd->event.defended.sender));
+                                memcpy(&acd->event.defended.target, packet->arp_tpa, sizeof(acd->event.defended.target));
                         } else if (acd->defend == N_ACD_DEFEND_ONCE) {
                                 n_acd_remember_conflict(acd, now);
                                 timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-                                acd->fn(acd, acd->userdata, N_ACD_EVENT_CONFLICT, packet);
-                                return 1;
+                                acd->event.event = N_ACD_EVENT_CONFLICT;
+                                acd->event.conflict.operation = be16toh(packet->ea_hdr.ar_op);
+                                memcpy(&acd->event.conflict.sender, packet->arp_sha, sizeof(acd->event.conflict.sender));
+                                memcpy(&acd->event.conflict.target, packet->arp_tpa, sizeof(acd->event.conflict.target));
                         } else {
-                                acd->fn(acd, acd->userdata, N_ACD_EVENT_DEFENDED, packet);
-                                return 1;
+                                acd->event.event = N_ACD_EVENT_DEFENDED;
+                                acd->event.defended.operation = be16toh(packet->ea_hdr.ar_op);
+                                memcpy(&acd->event.defended.sender, packet->arp_sha, sizeof(acd->event.defended.sender));
+                                memcpy(&acd->event.defended.target, packet->arp_tpa, sizeof(acd->event.defended.target));
                         }
                 }
 
                 break;
 
         case N_ACD_STATE_INIT:
-        case N_ACD_STATE_DOWN:
         default:
                 /*
                  * The socket should not be dispatched in those states, since
@@ -708,12 +663,9 @@ _public_ int n_acd_dispatch(NAcd *acd) {
         struct epoll_event events[2];
         int n, i, r = 0;
 
-        n_acd_ref(acd);
-
         n = epoll_wait(acd->fd_epoll, events, sizeof(events) / sizeof(*events), 0);
         if (n < 0) {
-                r = -n_acd_errno();
-                goto exit;
+                return -n_acd_errno();
         }
 
         for (i = 0; i < n; ++i) {
@@ -740,33 +692,27 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                  * allows bailing out of deep call-paths and then handling the
                  * error gracefully here.
                  */
-                timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_socket, NULL);
-                acd->state = N_ACD_STATE_DOWN;
-                acd->n_iteration = 0;
-                acd->fn(acd, acd->userdata, N_ACD_EVENT_DOWN, NULL);
-                r = 0;
-        } else if (r > 0) {
-                /*
-                 * Dispatchers return >0 whenever they raised a user callback.
-                 * We must stop processing our events in that case and return
-                 * to the caller to let them deal with any other higher
-                 * priority events. Furthermore, we want to explicitly allow
-                 * modifying the ACD context in the callback, so we better
-                 * return, anyway.
-                 */
-                r = 0;
+                n_acd_stop(acd);
+                acd->event.event = N_ACD_EVENT_DOWN;
+                return 0;
         }
 
-exit:
-        n_acd_unref(acd);
         return r;
+}
+
+_public_ int n_acd_pop_event(NAcd *acd, NAcdEvent *eventp) {
+        if (acd->event.event == _N_ACD_EVENT_INVALID)
+                return N_ACD_E_AGAIN;
+
+        *eventp = acd->event;
+        acd->event.event = _N_ACD_EVENT_INVALID;
+        return 0;
 }
 
 static int n_acd_bind_socket(NAcd *acd, int s) {
         /*
          * Due to strict aliasing, we cannot get uint32_t/uint16_t pointers to
-         * acd->mac, so provide a union accessor.
+         * acd->config.mac, so provide a union accessor.
          */
         const union {
                 uint8_t u8[6];
@@ -774,12 +720,12 @@ static int n_acd_bind_socket(NAcd *acd, int s) {
                 uint32_t u32[1];
         } mac = {
                 .u8 = {
-                        acd->mac.ether_addr_octet[0],
-                        acd->mac.ether_addr_octet[1],
-                        acd->mac.ether_addr_octet[2],
-                        acd->mac.ether_addr_octet[3],
-                        acd->mac.ether_addr_octet[4],
-                        acd->mac.ether_addr_octet[5],
+                        acd->config.mac.ether_addr_octet[0],
+                        acd->config.mac.ether_addr_octet[1],
+                        acd->config.mac.ether_addr_octet[2],
+                        acd->config.mac.ether_addr_octet[3],
+                        acd->config.mac.ether_addr_octet[4],
+                        acd->config.mac.ether_addr_octet[5],
                 }
         };
         struct sock_filter filter[] = {
@@ -830,13 +776,13 @@ static int n_acd_bind_socket(NAcd *acd, int s) {
                  * equal to the one we care about. Again, immediates must be
                  * given in native-endian.
                  */
-                BPF_STMT(BPF_LD + BPF_IMM, be32toh(acd->ip.s_addr)),                                            /* A <- clients IP */
+                BPF_STMT(BPF_LD + BPF_IMM, be32toh(acd->config.ip.s_addr)),                                     /* A <- clients IP */
                 BPF_STMT(BPF_MISC + BPF_TAX, 0),                                                                /* X <- A */
                 BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct ether_arp, arp_spa)),                        /* A <- SPA */
                 BPF_STMT(BPF_ALU + BPF_XOR + BPF_X, 0),                                                         /* X xor A */
                 BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, 0, 0, 1),                                                   /* A == 0 ? */
                 BPF_STMT(BPF_RET + BPF_K, 65535),                                                               /* return all */
-                BPF_STMT(BPF_LD + BPF_IMM, be32toh(acd->ip.s_addr)),                                            /* A <- clients IP */
+                BPF_STMT(BPF_LD + BPF_IMM, be32toh(acd->config.ip.s_addr)),                                     /* A <- clients IP */
                 BPF_STMT(BPF_MISC + BPF_TAX, 0),                                                                /* X <- A */
                 BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct ether_arp, arp_tpa)),                        /* A <- TPA */
                 BPF_STMT(BPF_ALU + BPF_XOR + BPF_X, 0),                                                         /* X xor A */
@@ -851,7 +797,7 @@ static int n_acd_bind_socket(NAcd *acd, int s) {
         const struct sockaddr_ll address = {
                 .sll_family = AF_PACKET,
                 .sll_protocol = htobe16(ETH_P_ARP),
-                .sll_ifindex = acd->ifindex,
+                .sll_ifindex = acd->config.ifindex,
                 .sll_halen = ETH_ALEN,
                 .sll_addr = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff },
         };
@@ -905,18 +851,23 @@ error:
         return r;
 }
 
-_public_ int n_acd_start(NAcd *acd, NAcdFn fn, void *userdata) {
+static bool n_acd_is_running(NAcd *acd) {
+        return acd->state != N_ACD_STATE_INIT;
+}
+
+_public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
         uint64_t now, delay;
         int r;
 
-        if (!fn)
-                return -EINVAL;
+        if (!config->ifindex ||
+            !memcmp(config->mac.ether_addr_octet, (uint8_t[ETH_ALEN]){ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, ETH_ALEN) ||
+            !config->ip.s_addr)
+                return N_ACD_E_INVALID_ARGUMENT;
+
         if (n_acd_is_running(acd))
-                return -EBUSY;
-        if (!acd->ifindex ||
-            !memcmp(acd->mac.ether_addr_octet, (uint8_t[ETH_ALEN]){ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, ETH_ALEN) ||
-            !acd->ip.s_addr)
-                return -EBADRQC;
+                return N_ACD_E_STARTED;
+
+        acd->config = *config;
 
         r = n_acd_setup_socket(acd);
         if (r < 0)
@@ -935,8 +886,6 @@ _public_ int n_acd_start(NAcd *acd, NAcdFn fn, void *userdata) {
         if (r < 0)
                 goto error;
 
-        acd->fn = fn;
-        acd->userdata = userdata;
         acd->state = N_ACD_STATE_PROBING;
         acd->defend = N_ACD_DEFEND_NEVER;
         acd->n_iteration = 0;
@@ -949,12 +898,11 @@ error:
 }
 
 _public_ void n_acd_stop(NAcd *acd) {
-        acd->fn = NULL;
-        acd->userdata = NULL;
         acd->state = N_ACD_STATE_INIT;
         acd->defend = N_ACD_DEFEND_NEVER;
         acd->n_iteration = 0;
         acd->last_defend = 0;
+        acd->event.event = _N_ACD_EVENT_INVALID;
         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
 
         if (acd->fd_socket >= 0) {
@@ -970,11 +918,9 @@ _public_ int n_acd_announce(NAcd *acd, unsigned int defend) {
         int r;
 
         if (defend >= _N_ACD_DEFEND_N)
-                return -EINVAL;
+                return N_ACD_E_INVALID_ARGUMENT;
         if (!n_acd_is_running(acd))
-                return -ESHUTDOWN;
-        if (acd->state == N_ACD_STATE_DOWN)
-                return -ENETDOWN;
+                return N_ACD_E_STOPPED;
 
         /*
          * Sending announcements means we finished probing and use the address

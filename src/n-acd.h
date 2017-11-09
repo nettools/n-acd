@@ -5,28 +5,47 @@
  *
  * This is the public header of the n-acd library, implementing IPv4 Address
  * Conflict Detection as described in RFC-5227. This header defines the public
- * API and all entry points if n-acd.
+ * API and all entry points of n-acd.
  */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#include <netinet/if_ether.h>
+#include <netinet/in.h>
 #include <stdbool.h>
 
-struct ether_addr;
-struct ether_arp;
-struct in_addr;
+enum {
+        _N_ACD_E_SUCCESS,
+
+        N_ACD_E_AGAIN,
+
+        N_ACD_E_INVALID_ARGUMENT,
+        N_ACD_E_STARTED,
+        N_ACD_E_STOPPED,
+};
 
 typedef struct NAcd NAcd;
-typedef void (*NAcdFn) (NAcd *acd, void *userdata, unsigned int event, const struct ether_arp *conflict);
 
-enum {
-        N_ACD_DEFEND_NEVER,
-        N_ACD_DEFEND_ONCE,
-        N_ACD_DEFEND_ALWAYS,
-        _N_ACD_DEFEND_N,
-};
+typedef struct NAcdConfig {
+        unsigned int ifindex;
+        struct ether_addr mac;
+        struct in_addr ip;
+} NAcdConfig;
+
+typedef struct NAcdEvent {
+        unsigned int event;
+        union {
+                struct {
+                } ready, down;
+                struct {
+                        uint16_t operation;
+                        struct ether_addr sender;
+                        struct in_addr target;
+                } used, defended, conflict;
+        };
+} NAcdEvent;
 
 enum {
         N_ACD_EVENT_READY,
@@ -35,30 +54,31 @@ enum {
         N_ACD_EVENT_CONFLICT,
         N_ACD_EVENT_DOWN,
         _N_ACD_EVENT_N,
+        _N_ACD_EVENT_INVALID,
+};
+
+enum {
+        N_ACD_DEFEND_NEVER,
+        N_ACD_DEFEND_ONCE,
+        N_ACD_DEFEND_ALWAYS,
+        _N_ACD_DEFEND_N,
 };
 
 int n_acd_new(NAcd **acdp);
-NAcd *n_acd_ref(NAcd *acd);
-NAcd *n_acd_unref(NAcd *acd);
+NAcd *n_acd_free(NAcd *acd);
 
-bool n_acd_is_running(NAcd *acd);
 void n_acd_get_fd(NAcd *acd, int *fdp);
-void n_acd_get_ifindex(NAcd *acd, unsigned int *ifindexp);
-void n_acd_get_mac(NAcd *acd, struct ether_addr *macp);
-void n_acd_get_ip(NAcd *acd, struct in_addr *ipp);
-
-int n_acd_set_ifindex(NAcd *acd, unsigned int ifindex);
-int n_acd_set_mac(NAcd *acd, const struct ether_addr *mac);
-int n_acd_set_ip(NAcd *acd, const struct in_addr *ip);
 
 int n_acd_dispatch(NAcd *acd);
-int n_acd_start(NAcd *acd, NAcdFn fn, void *userdata);
-void n_acd_stop(NAcd *acd);
+int n_acd_pop_event(NAcd *acd, NAcdEvent *eventp);
 int n_acd_announce(NAcd *acd, unsigned int defend);
 
-static inline void n_acd_unrefp(NAcd **acd) {
+int n_acd_start(NAcd *acd, NAcdConfig *config);
+void n_acd_stop(NAcd *acd);
+
+static inline void n_acd_freep(NAcd **acd) {
         if (*acd)
-                n_acd_unref(*acd);
+                n_acd_free(*acd);
 }
 
 #ifdef __cplusplus

@@ -7,23 +7,13 @@
 #include <stdlib.h>
 #include "test.h"
 
-static void test_unplug_down_fn(NAcd *acd, void *userdata, unsigned int event, const struct ether_arp *conflict) {
-        unsigned int ifindex;
-        int *state = userdata;
-
-        if (event == N_ACD_EVENT_DOWN) {
-                *state = 0;
-        } else {
-                assert(event == N_ACD_EVENT_READY);
-                *state = 1;
-                n_acd_get_ifindex(acd, &ifindex);
-                test_veth_cmd(ifindex, "down");
-        }
-}
-
 static void test_unplug_down(int ifindex, const struct ether_addr *mac, unsigned int run) {
+        NAcdConfig config = {
+                .ifindex = ifindex,
+                .mac = *mac,
+                .ip = { htobe32((192 << 24) | (168 << 16) | (1 << 0)) },
+        };
         struct pollfd pfds;
-        int state;
         NAcd *acd;
         int r, fd;
 
@@ -31,26 +21,20 @@ static void test_unplug_down(int ifindex, const struct ether_addr *mac, unsigned
                 test_veth_cmd(ifindex, "down");
 
         r = n_acd_new(&acd);
-        assert(r >= 0);
-
-        r = n_acd_set_ifindex(acd, ifindex);
-        assert(r >= 0);
-        r = n_acd_set_mac(acd, mac);
-        assert(r >= 0);
-        r = n_acd_set_ip(acd, &(struct in_addr){ htobe32((192 << 24) | (168 << 16) | (1 << 0)) });
-        assert(r >= 0);
+        assert(!r);
 
         if (!run--)
                 test_veth_cmd(ifindex, "down");
 
         n_acd_get_fd(acd, &fd);
-        r = n_acd_start(acd, test_unplug_down_fn, &state);
-        assert(r >= 0);
+        r = n_acd_start(acd, &config);
+        assert(!r);
 
         if (!run--)
                 test_veth_cmd(ifindex, "down");
 
-        for (state = -1; state; ) {
+        for (;;) {
+                NAcdEvent event;
                 pfds = (struct pollfd){ .fd = fd, .events = POLLIN };
                 r = poll(&pfds, 1, -1);
                 assert(r >= 0);
@@ -59,10 +43,22 @@ static void test_unplug_down(int ifindex, const struct ether_addr *mac, unsigned
                         test_veth_cmd(ifindex, "down");
 
                 r = n_acd_dispatch(acd);
-                assert(r >= 0);
+                assert(!r);
+
+                r = n_acd_pop_event(acd, &event);
+                if (!r) {
+                        if (event.event == N_ACD_EVENT_DOWN) {
+                                break;
+                        } else {
+                                assert(event.event == N_ACD_EVENT_READY);
+                                test_veth_cmd(ifindex, "down");
+                        }
+                } else {
+                        assert(r == N_ACD_E_AGAIN);
+                }
         }
 
-        n_acd_unref(acd);
+        n_acd_free(acd);
 }
 
 int main(int argc, char **argv) {
