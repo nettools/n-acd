@@ -17,6 +17,7 @@
  */
 
 #include <assert.h>
+#include <c-list.h>
 #include <endian.h>
 #include <errno.h>
 #include <limits.h>
@@ -131,6 +132,7 @@ struct NAcd {
 
         /* pending event */
         NAcdEvent event;
+        CList events;
 };
 
 static int n_acd_errno(void) {
@@ -160,6 +162,7 @@ _public_ int n_acd_new(NAcd **acdp) {
         acd->state = N_ACD_STATE_INIT;
         acd->defend = N_ACD_DEFEND_NEVER;
         acd->event.event = _N_ACD_EVENT_INVALID;
+        acd->events = (CList)C_LIST_INIT(acd->events);
 
         /*
          * We need random jitter for all timeouts when handling ARP probes. Use
@@ -904,6 +907,8 @@ _public_ void n_acd_stop(NAcd *acd) {
         acd->last_defend = 0;
         acd->event.event = _N_ACD_EVENT_INVALID;
         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+
+        assert(c_list_is_empty(&acd->events));
 
         if (acd->fd_socket >= 0) {
                 assert(acd->fd_epoll >= 0);

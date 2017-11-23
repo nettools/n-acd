@@ -10,6 +10,7 @@ libnacd_private = static_library('nacd-private',
                                         '-fvisibility=hidden',
                                         '-fno-common'
                                  ],
+                                 dependencies: dep_clist,
                                  pic: true)
 install_headers('n-acd.h')
 libnacd_symfile = join_paths(meson.current_source_dir(), 'libnacd.sym')
