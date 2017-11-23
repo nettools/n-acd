@@ -54,7 +54,6 @@ enum {
         N_ACD_EVENT_CONFLICT,
         N_ACD_EVENT_DOWN,
         _N_ACD_EVENT_N,
-        _N_ACD_EVENT_INVALID,
 };
 
 enum {
@@ -70,7 +69,7 @@ NAcd *n_acd_free(NAcd *acd);
 void n_acd_get_fd(NAcd *acd, int *fdp);
 
 int n_acd_dispatch(NAcd *acd);
-int n_acd_pop_event(NAcd *acd, NAcdEvent *eventp);
+int n_acd_pop_event(NAcd *acd, NAcdEvent **eventp);
 int n_acd_announce(NAcd *acd, unsigned int defend);
 
 int n_acd_start(NAcd *acd, NAcdConfig *config);

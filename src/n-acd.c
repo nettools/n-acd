@@ -112,6 +112,11 @@ enum {
         N_ACD_STATE_ANNOUNCING,
 };
 
+typedef struct NAcdEventNode {
+        NAcdEvent event;
+        CList link;
+} NAcdEventNode;
+
 struct NAcd {
         /* context */
         unsigned int seed;
@@ -130,9 +135,9 @@ struct NAcd {
         uint64_t last_defend;
         uint64_t last_conflict;
 
-        /* pending event */
-        NAcdEvent event;
+        /* pending events */
         CList events;
+        NAcdEventNode *current;
 };
 
 static int n_acd_errno(void) {
@@ -144,6 +149,31 @@ static int n_acd_errno(void) {
          * but only marginally and only affects slow-paths.
          */
         return abs(errno) ? : EIO;
+}
+
+static int n_acd_event_node_new(NAcdEventNode **nodep, unsigned int event) {
+        NAcdEventNode *node;
+
+        node = calloc(1, sizeof(*node));
+        if (!node)
+                return -ENOMEM;
+
+        node->event.event = event;
+        node->link = (CList)C_LIST_INIT(node->link);
+
+        *nodep = node;
+
+        return 0;
+}
+
+static NAcdEventNode *n_acd_event_node_free(NAcdEventNode *node) {
+        if (!node)
+                return NULL;
+
+        c_list_unlink(&node->link);
+        free(node);
+
+        return NULL;
 }
 
 _public_ int n_acd_new(NAcd **acdp) {
@@ -161,7 +191,6 @@ _public_ int n_acd_new(NAcd **acdp) {
         acd->fd_socket = -1;
         acd->state = N_ACD_STATE_INIT;
         acd->defend = N_ACD_DEFEND_NEVER;
-        acd->event.event = _N_ACD_EVENT_INVALID;
         acd->events = (CList)C_LIST_INIT(acd->events);
 
         /*
@@ -244,33 +273,46 @@ _public_ void n_acd_get_fd(NAcd *acd, int *fdp) {
 }
 
 static int n_acd_push_event(NAcd *acd, unsigned int event, uint16_t *operation, uint8_t (*sender)[6], uint8_t (*target)[4]) {
+        NAcdEventNode *node;
+        int r;
+
+        r = n_acd_event_node_new(&node, event);
+        if (r < 0)
+                return r;
+
         switch (event) {
         case N_ACD_EVENT_USED:
-                acd->event.used.operation = be16toh(*operation);
-                memcpy(&acd->event.used.sender, sender, sizeof(acd->event.used.sender));
-                memcpy(&acd->event.used.target, target, sizeof(acd->event.used.target));
+                node->event.used.operation = be16toh(*operation);
+                memcpy(&node->event.used.sender, sender, sizeof(node->event.used.sender));
+                memcpy(&node->event.used.target, target, sizeof(node->event.used.target));
                 break;
         case N_ACD_EVENT_CONFLICT:
-                acd->event.conflict.operation = be16toh(*operation);
-                memcpy(&acd->event.conflict.sender, sender, sizeof(acd->event.conflict.sender));
-                memcpy(&acd->event.conflict.target, target, sizeof(acd->event.conflict.target));
+                node->event.conflict.operation = be16toh(*operation);
+                memcpy(&node->event.conflict.sender, sender, sizeof(node->event.conflict.sender));
+                memcpy(&node->event.conflict.target, target, sizeof(node->event.conflict.target));
                 break;
         case N_ACD_EVENT_DEFENDED:
-                acd->event.defended.operation = be16toh(*operation);
-                memcpy(&acd->event.defended.sender, sender, sizeof(acd->event.defended.sender));
-                memcpy(&acd->event.defended.target, target, sizeof(acd->event.defended.target));
+                node->event.defended.operation = be16toh(*operation);
+                memcpy(&node->event.defended.sender, sender, sizeof(node->event.defended.sender));
+                memcpy(&node->event.defended.target, target, sizeof(node->event.defended.target));
                 break;
         case N_ACD_EVENT_READY:
         case N_ACD_EVENT_DOWN:
                 break;
+        default:
+                assert(0);
         }
 
-        acd->event.event = event;
+        c_list_link_tail(&acd->events, &node->link);
+
         return 0;
 }
 
 static void n_acd_flush_events(NAcd *acd) {
-        acd->event.event = _N_ACD_EVENT_INVALID;
+        NAcdEventNode *node;
+
+        while ((node = c_list_first_entry(&acd->events, NAcdEventNode, link)))
+                n_acd_event_node_free(node);
 }
 
 static int n_acd_now(uint64_t *nowp) {
@@ -733,13 +775,17 @@ _public_ int n_acd_dispatch(NAcd *acd) {
         return r;
 }
 
-_public_ int n_acd_pop_event(NAcd *acd, NAcdEvent *eventp) {
-        if (acd->event.event == _N_ACD_EVENT_INVALID)
+_public_ int n_acd_pop_event(NAcd *acd, NAcdEvent **eventp) {
+        acd->current = n_acd_event_node_free(acd->current);
+
+        if (c_list_is_empty(&acd->events))
                 return N_ACD_E_AGAIN;
 
-        *eventp = acd->event;
+        acd->current = c_list_first_entry(&acd->events, NAcdEventNode, link);
+        c_list_unlink_init(&acd->current->link);
 
-        n_acd_flush_events(acd);
+        if (eventp)
+                *eventp = &acd->current->event;
 
         return 0;
 }

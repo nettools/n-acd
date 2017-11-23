@@ -34,7 +34,7 @@ static void test_unplug_down(int ifindex, const struct ether_addr *mac, unsigned
                 test_veth_cmd(ifindex, "down");
 
         for (;;) {
-                NAcdEvent event;
+                NAcdEvent *event;
                 pfds = (struct pollfd){ .fd = fd, .events = POLLIN };
                 r = poll(&pfds, 1, -1);
                 assert(r >= 0);
@@ -47,10 +47,10 @@ static void test_unplug_down(int ifindex, const struct ether_addr *mac, unsigned
 
                 r = n_acd_pop_event(acd, &event);
                 if (!r) {
-                        if (event.event == N_ACD_EVENT_DOWN) {
+                        if (event->event == N_ACD_EVENT_DOWN) {
                                 break;
                         } else {
-                                assert(event.event == N_ACD_EVENT_READY);
+                                assert(event->event == N_ACD_EVENT_READY);
                                 test_veth_cmd(ifindex, "down");
                         }
                 } else {

@@ -26,7 +26,7 @@ static void test_loopback(int ifindex, const struct ether_addr *mac) {
         assert(!r);
 
         for (;;) {
-                NAcdEvent event;
+                NAcdEvent *event;
                 pfds = (struct pollfd){ .fd = fd, .events = POLLIN };
                 r = poll(&pfds, 1, -1);
                 assert(r >= 0);
@@ -36,7 +36,7 @@ static void test_loopback(int ifindex, const struct ether_addr *mac) {
 
                 r = n_acd_pop_event(acd, &event);
                 if (!r) {
-                        assert(event.event == N_ACD_EVENT_READY);
+                        assert(event->event == N_ACD_EVENT_READY);
                         break;
                 } else {
                         assert(r == N_ACD_E_AGAIN);
