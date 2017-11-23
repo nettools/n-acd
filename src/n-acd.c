@@ -243,6 +243,36 @@ _public_ void n_acd_get_fd(NAcd *acd, int *fdp) {
         *fdp = acd->fd_epoll;
 }
 
+static int n_acd_push_event(NAcd *acd, unsigned int event, uint16_t *operation, uint8_t (*sender)[6], uint8_t (*target)[4]) {
+        switch (event) {
+        case N_ACD_EVENT_USED:
+                acd->event.used.operation = be16toh(*operation);
+                memcpy(&acd->event.used.sender, sender, sizeof(acd->event.used.sender));
+                memcpy(&acd->event.used.target, target, sizeof(acd->event.used.target));
+                break;
+        case N_ACD_EVENT_CONFLICT:
+                acd->event.conflict.operation = be16toh(*operation);
+                memcpy(&acd->event.conflict.sender, sender, sizeof(acd->event.conflict.sender));
+                memcpy(&acd->event.conflict.target, target, sizeof(acd->event.conflict.target));
+                break;
+        case N_ACD_EVENT_DEFENDED:
+                acd->event.defended.operation = be16toh(*operation);
+                memcpy(&acd->event.defended.sender, sender, sizeof(acd->event.defended.sender));
+                memcpy(&acd->event.defended.target, target, sizeof(acd->event.defended.target));
+                break;
+        case N_ACD_EVENT_READY:
+        case N_ACD_EVENT_DOWN:
+                break;
+        }
+
+        acd->event.event = event;
+        return 0;
+}
+
+static void n_acd_flush_events(NAcd *acd) {
+        acd->event.event = _N_ACD_EVENT_INVALID;
+}
+
 static int n_acd_now(uint64_t *nowp) {
         struct timespec ts;
         int r;
@@ -375,7 +405,9 @@ static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
                          * wait for further instructions, thus effectively
                          * increasing the probe-wait.
                          */
-                        acd->event.event = N_ACD_EVENT_READY;
+                        r = n_acd_push_event(acd, N_ACD_EVENT_READY, NULL, NULL, NULL);
+                        if (r)
+                                return r;
                 } else {
                         /*
                          * We have not sent all 3 probes, yet. A timer fired,
@@ -486,10 +518,9 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                  */
                 n_acd_remember_conflict(acd, now);
                 timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-                acd->event.event = N_ACD_EVENT_USED;
-                acd->event.used.operation = be16toh(packet->ea_hdr.ar_op);
-                memcpy(&acd->event.used.sender, packet->arp_sha, sizeof(acd->event.used.sender));
-                memcpy(&acd->event.used.target, packet->arp_tpa, sizeof(acd->event.used.target));
+                r = n_acd_push_event(acd, N_ACD_EVENT_USED, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
+                if (r)
+                        return r;
 
                 break;
 
@@ -511,10 +542,9 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                 if (acd->defend == N_ACD_DEFEND_NEVER) {
                         n_acd_remember_conflict(acd, now);
                         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-                        acd->event.event = N_ACD_EVENT_CONFLICT;
-                        acd->event.conflict.operation = be16toh(packet->ea_hdr.ar_op);
-                        memcpy(&acd->event.conflict.sender, packet->arp_sha, sizeof(acd->event.conflict.sender));
-                        memcpy(&acd->event.conflict.target, packet->arp_tpa, sizeof(acd->event.conflict.target));
+                        r = n_acd_push_event(acd, N_ACD_EVENT_CONFLICT, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
+                        if (r)
+                                return r;
                 } else {
                         if (now > acd->last_defend + N_ACD_RFC_DEFEND_INTERVAL_USEC) {
                                 r = n_acd_send(acd, &acd->config.ip);
@@ -522,22 +552,19 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                                         return r;
 
                                 acd->last_defend = now;
-                                acd->event.event = N_ACD_EVENT_DEFENDED;
-                                acd->event.defended.operation = be16toh(packet->ea_hdr.ar_op);
-                                memcpy(&acd->event.defended.sender, packet->arp_sha, sizeof(acd->event.defended.sender));
-                                memcpy(&acd->event.defended.target, packet->arp_tpa, sizeof(acd->event.defended.target));
+                                r = n_acd_push_event(acd, N_ACD_EVENT_DEFENDED, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
+                                if (r)
+                                        return r;
                         } else if (acd->defend == N_ACD_DEFEND_ONCE) {
                                 n_acd_remember_conflict(acd, now);
                                 timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-                                acd->event.event = N_ACD_EVENT_CONFLICT;
-                                acd->event.conflict.operation = be16toh(packet->ea_hdr.ar_op);
-                                memcpy(&acd->event.conflict.sender, packet->arp_sha, sizeof(acd->event.conflict.sender));
-                                memcpy(&acd->event.conflict.target, packet->arp_tpa, sizeof(acd->event.conflict.target));
+                                r = n_acd_push_event(acd, N_ACD_EVENT_CONFLICT, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
+                                if (r)
+                                        return r;
                         } else {
-                                acd->event.event = N_ACD_EVENT_DEFENDED;
-                                acd->event.defended.operation = be16toh(packet->ea_hdr.ar_op);
-                                memcpy(&acd->event.defended.sender, packet->arp_sha, sizeof(acd->event.defended.sender));
-                                memcpy(&acd->event.defended.target, packet->arp_tpa, sizeof(acd->event.defended.target));
+                                r = n_acd_push_event(acd, N_ACD_EVENT_DEFENDED, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
+                                if (r)
+                                        return r;
                         }
                 }
 
@@ -696,7 +723,10 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                  * error gracefully here.
                  */
                 n_acd_stop(acd);
-                acd->event.event = N_ACD_EVENT_DOWN;
+                r = n_acd_push_event(acd, N_ACD_EVENT_DOWN, NULL, NULL, NULL);
+                if (r)
+                        return r;
+
                 return 0;
         }
 
@@ -708,7 +738,9 @@ _public_ int n_acd_pop_event(NAcd *acd, NAcdEvent *eventp) {
                 return N_ACD_E_AGAIN;
 
         *eventp = acd->event;
-        acd->event.event = _N_ACD_EVENT_INVALID;
+
+        n_acd_flush_events(acd);
+
         return 0;
 }
 
@@ -905,8 +937,8 @@ _public_ void n_acd_stop(NAcd *acd) {
         acd->defend = N_ACD_DEFEND_NEVER;
         acd->n_iteration = 0;
         acd->last_defend = 0;
-        acd->event.event = _N_ACD_EVENT_INVALID;
         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+        n_acd_flush_events(acd);
 
         assert(c_list_is_empty(&acd->events));
 
