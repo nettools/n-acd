@@ -63,6 +63,12 @@ static void test_api_runtime(void) {
 }
 
 int main(int argc, char **argv) {
+        int r;
+
+        r = test_setup();
+        if (r)
+                return r;
+
         test_api_constants();
         test_api_management();
         test_api_runtime();
