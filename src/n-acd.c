@@ -782,7 +782,7 @@ _public_ int n_acd_pop_event(NAcd *acd, NAcdEvent **eventp) {
                 return N_ACD_E_AGAIN;
 
         acd->current = c_list_first_entry(&acd->events, NAcdEventNode, link);
-        c_list_unlink_init(&acd->current->link);
+        c_list_unlink(&acd->current->link);
 
         if (eventp)
                 *eventp = &acd->current->event;
