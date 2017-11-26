@@ -629,33 +629,6 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
         uint64_t v;
         int r;
 
-        if (event->events & EPOLLIN) {
-                r = read(acd->fd_timer, &v, sizeof(v));
-                if (r == sizeof(v)) {
-                        /*
-                         * We successfully read a timer-value. Handle it and
-                         * return. We do NOT fall-through to EPOLLHUP handling,
-                         * as we always must drain buffers first.
-                         */
-                        return n_acd_handle_timeout(acd, v);
-                } else if (r >= 0) {
-                        /*
-                         * Kernel guarantees 8-byte reads; fail hard if it
-                         * suddenly starts doing weird shit. No clue what to do
-                         * with those values, anyway.
-                         */
-                        return -EIO;
-                } else if (errno != EAGAIN) {
-                        /*
-                         * Something failed. We use CLOCK_BOOTTIME, so
-                         * ECANCELED cannot happen. Hence, there is no error
-                         * that we could gracefully handle. Fail hard and let
-                         * the caller deal with it.
-                         */
-                        return -n_acd_errno();
-                }
-        }
-
         if (event->events & (EPOLLHUP | EPOLLERR)) {
                 /*
                  * There is no way to handle either gracefully. If we ignored
@@ -665,6 +638,42 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
                 return -EIO;
         }
 
+        if (event->events & EPOLLIN) {
+                for (unsigned int i = 0; i < 128; ++i) {
+                        r = read(acd->fd_timer, &v, sizeof(v));
+                        if (r == sizeof(v)) {
+                                /*
+                                 * We successfully read a timer-value. Handle it and
+                                 * return. We do NOT fall-through to EPOLLHUP handling,
+                                 * as we always must drain buffers first.
+                                 */
+                                return n_acd_handle_timeout(acd, v);
+                        } else if (r >= 0) {
+                                /*
+                                 * Kernel guarantees 8-byte reads; fail hard if it
+                                 * suddenly starts doing weird shit. No clue what to do
+                                 * with those values, anyway.
+                                 */
+                                return -EIO;
+                        } else if (errno == EAGAIN) {
+                                /*
+                                 * No more pending events.
+                                 */
+                                return 0;
+                        } else {
+                                /*
+                                 * Something failed. We use CLOCK_BOOTTIME, so
+                                 * ECANCELED cannot happen. Hence, there is no error
+                                 * that we could gracefully handle. Fail hard and let
+                                 * the caller deal with it.
+                                 */
+                                return -n_acd_errno();
+                        }
+                }
+
+                return N_ACD_E_PREEMPTED;
+        }
+
         return 0;
 }
 
@@ -672,68 +681,73 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
         struct ether_arp packet;
         ssize_t l;
 
-        /*
-         * Regardless whether EPOLLIN is set in @event->events, we always
-         * invoke recv(2). This is a safety-net for sockets, which always fetch
-         * queued errors on all syscalls. That means, if anything failed on the
-         * socket, we will be notified via recv(2). This simplifies the code
-         * and avoid magic EPOLLIN/ERR/HUP juggling.
-         *
-         * Note that we must use recv(2) over read(2), since the latter cannot
-         * deal with empty packets properly.
-         */
-        l = recv(acd->fd_socket, &packet, sizeof(packet), MSG_TRUNC);
-        if (l == (ssize_t)sizeof(packet)) {
+        for (unsigned int i = 0; i < 128; ++i) {
                 /*
-                 * We read a full ARP packet. We never fall-through to EPOLLHUP
-                 * handling, as we always must drain buffers first.
+                 * Regardless whether EPOLLIN is set in @event->events, we always
+                 * invoke recv(2). This is a safety-net for sockets, which always fetch
+                 * queued errors on all syscalls. That means, if anything failed on the
+                 * socket, we will be notified via recv(2). This simplifies the code
+                 * and avoid magic EPOLLIN/ERR/HUP juggling.
+                 *
+                 * Note that we must use recv(2) over read(2), since the latter cannot
+                 * deal with empty packets properly.
                  */
-                return n_acd_handle_packet(acd, &packet);
-        } else if (l >= 0) {
-                /*
-                 * The BPF filter discards wrong packets, so error out
-                 * if something slips through for any reason. Don't silently
-                 * ignore it, since we explicitly want to know if something
-                 * went fishy.
-                 */
-                return -EIO;
-        } else if (errno == ENETDOWN || errno == ENXIO) {
-                /*
-                 * We get ENETDOWN if the network-device goes down or is
-                 * removed. ENXIO might happen on async send-operations if the
-                 * network-device was unplugged and thus the kernel is no
-                 * longer aware of it.
-                 * In any case, we do not allow proceeding with this socket. We
-                 * stop the engine and notify the user gracefully.
-                 */
-                return -N_ACD_E_DOWN;
-        } else if (errno != EAGAIN) {
-                /*
-                 * Cannot dispatch the packet. This might be due to OOM, HUP,
-                 * or something else. We cannot handle it gracefully so forward
-                 * to the caller.
-                 */
-                return -n_acd_errno();
+                l = recv(acd->fd_socket, &packet, sizeof(packet), MSG_TRUNC);
+                if (l == (ssize_t)sizeof(packet)) {
+                        /*
+                         * We read a full ARP packet. We never fall-through to EPOLLHUP
+                         * handling, as we always must drain buffers first.
+                         */
+                        return n_acd_handle_packet(acd, &packet);
+                } else if (l >= 0) {
+                        /*
+                         * The BPF filter discards wrong packets, so error out
+                         * if something slips through for any reason. Don't silently
+                         * ignore it, since we explicitly want to know if something
+                         * went fishy.
+                         */
+                        return -EIO;
+                } else if (errno == ENETDOWN || errno == ENXIO) {
+                        /*
+                         * We get ENETDOWN if the network-device goes down or is
+                         * removed. ENXIO might happen on async send-operations if the
+                         * network-device was unplugged and thus the kernel is no
+                         * longer aware of it.
+                         * In any case, we do not allow proceeding with this socket. We
+                         * stop the engine and notify the user gracefully.
+                         */
+                        return -N_ACD_E_DOWN;
+                } else if (errno == EAGAIN) {
+                        /*
+                         * We cannot read data from the socket (we got EAGAIN). As a safety net
+                         * check for EPOLLHUP/ERR. Those cannot be disabled with epoll, so we
+                         * must make sure to not busy-loop by ignoring them. Note that we know
+                         * recv(2) on sockets to return an error if either of these epoll-flags
+                         * is set. Hence, if we did not handle it above, we have no other way
+                         * but treating those flags as fatal errors and returning them to the
+                         * caller.
+                         */
+                        if (event->events & (EPOLLHUP | EPOLLERR))
+                                return -EIO;
+
+                        return 0;
+                } else {
+                        /*
+                         * Cannot dispatch the packet. This might be due to OOM, HUP,
+                         * or something else. We cannot handle it gracefully so forward
+                         * to the caller.
+                         */
+                        return -n_acd_errno();
+                }
         }
 
-        /*
-         * We cannot read data from the socket (we got EAGAIN). As a safety net
-         * check for EPOLLHUP/ERR. Those cannot be disabled with epoll, so we
-         * must make sure to not busy-loop by ignoring them. Note that we know
-         * recv(2) on sockets to return an error if either of these epoll-flags
-         * is set. Hence, if we did not handle it above, we have no other way
-         * but treating those flags as fatal errors and returning them to the
-         * caller.
-         */
-        if (event->events & (EPOLLHUP | EPOLLERR))
-                return -EIO;
-
-        return 0;
+        return N_ACD_E_PREEMPTED;
 }
 
 _public_ int n_acd_dispatch(NAcd *acd) {
         struct epoll_event events[2];
         int n, i, r = 0;
+        bool preempted = false;
 
         n = epoll_wait(acd->fd_epoll, events, sizeof(events) / sizeof(*events), 0);
         if (n < 0) {
@@ -753,7 +767,9 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                         break;
                 }
 
-                if (r != 0)
+                if (r == N_ACD_E_PREEMPTED)
+                        preempted = true;
+                else if (r != 0)
                         break;
         }
 
@@ -772,7 +788,10 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                 return 0;
         }
 
-        return r;
+        if (preempted)
+                return N_ACD_E_PREEMPTED;
+        else
+                return r;
 }
 
 _public_ int n_acd_pop_event(NAcd *acd, NAcdEvent **eventp) {

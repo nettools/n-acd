@@ -20,6 +20,7 @@ enum {
         _N_ACD_E_SUCCESS,
 
         N_ACD_E_AGAIN,
+        N_ACD_E_PREEMPTED,
 
         N_ACD_E_INVALID_ARGUMENT,
         N_ACD_E_STARTED,
