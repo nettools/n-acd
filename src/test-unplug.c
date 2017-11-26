@@ -54,7 +54,7 @@ static void test_unplug_down(int ifindex, const struct ether_addr *mac, unsigned
                                 test_veth_cmd(ifindex, "down");
                         }
                 } else {
-                        assert(r == N_ACD_E_AGAIN);
+                        assert(r == N_ACD_E_DONE);
                 }
         }
 

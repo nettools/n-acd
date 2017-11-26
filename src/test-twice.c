@@ -52,7 +52,7 @@ static void test_unused(int ifindex1, const struct ether_addr *mac1, int ifindex
                                 assert(event->event == N_ACD_EVENT_READY || event->event == N_ACD_EVENT_USED);
                                 state1 = !!(event->event == N_ACD_EVENT_READY);
                         } else {
-                                assert(r == N_ACD_E_AGAIN);
+                                assert(r == N_ACD_E_DONE);
                         }
                 }
 
@@ -65,7 +65,7 @@ static void test_unused(int ifindex1, const struct ether_addr *mac1, int ifindex
                                 assert(event->event == N_ACD_EVENT_READY || event->event == N_ACD_EVENT_USED);
                                 state2 = !!(event->event == N_ACD_EVENT_READY);
                         } else {
-                                assert(r == N_ACD_E_AGAIN);
+                                assert(r == N_ACD_E_DONE);
                         }
                 }
         }

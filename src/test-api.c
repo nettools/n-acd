@@ -52,7 +52,7 @@ static void test_api_runtime(void) {
         r = n_acd_dispatch(acd);
         assert(!r);
         r = n_acd_pop_event(acd, NULL);
-        assert(r == N_ACD_E_AGAIN);
+        assert(r == N_ACD_E_DONE);
         r = n_acd_start(acd, &config);
         assert(!r);
         n_acd_stop(acd);

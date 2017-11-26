@@ -38,7 +38,7 @@ static void test_unused(int ifindex, const struct ether_addr *mac) {
                         assert(event->event == N_ACD_EVENT_READY);
                         break;
                 } else {
-                        assert(r == N_ACD_E_AGAIN);
+                        assert(r == N_ACD_E_DONE);
                 }
         }
 
