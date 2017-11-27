@@ -52,12 +52,16 @@ static void test_api_runtime(void) {
         r = n_acd_dispatch(acd);
         assert(!r);
         r = n_acd_pop_event(acd, NULL);
-        assert(r == N_ACD_E_DONE);
+        assert(r == N_ACD_E_STOPPED);
         r = n_acd_start(acd, &config);
         assert(!r);
+        r = n_acd_start(acd, &config);
+        assert(r == N_ACD_E_BUSY);
+        r = n_acd_pop_event(acd, NULL);
+        assert(r == N_ACD_E_DONE);
         n_acd_stop(acd);
         r = n_acd_announce(acd, N_ACD_DEFEND_NEVER);
-        assert(r == N_ACD_E_STOPPED);
+        assert(r == N_ACD_E_BUSY);
 
         n_acd_free(acd);
 }

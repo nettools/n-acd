@@ -20,11 +20,11 @@ enum {
         _N_ACD_E_SUCCESS,
 
         N_ACD_E_DONE,
+        N_ACD_E_STOPPED,
         N_ACD_E_PREEMPTED,
 
         N_ACD_E_INVALID_ARGUMENT,
-        N_ACD_E_STARTED,
-        N_ACD_E_STOPPED,
+        N_ACD_E_BUSY,
 };
 
 typedef struct NAcd NAcd;

@@ -245,10 +245,15 @@ error:
 }
 
 _public_ NAcd *n_acd_free(NAcd *acd) {
+        NAcdEventNode *node;
+
         if (!acd)
                 return NULL;
 
         n_acd_stop(acd);
+
+        while ((node = c_list_first_entry(&acd->events, NAcdEventNode, link)))
+                n_acd_event_node_free(node);
 
         assert(acd->fd_socket < 0);
 
@@ -307,13 +312,6 @@ static int n_acd_push_event(NAcd *acd, unsigned int event, uint16_t *operation, 
         c_list_link_tail(&acd->events, &node->link);
 
         return 0;
-}
-
-static void n_acd_flush_events(NAcd *acd) {
-        NAcdEventNode *node;
-
-        while ((node = c_list_first_entry(&acd->events, NAcdEventNode, link)))
-                n_acd_event_node_free(node);
 }
 
 static int n_acd_now(uint64_t *nowp) {
@@ -815,8 +813,12 @@ _public_ int n_acd_dispatch(NAcd *acd) {
 _public_ int n_acd_pop_event(NAcd *acd, NAcdEvent **eventp) {
         acd->current = n_acd_event_node_free(acd->current);
 
-        if (c_list_is_empty(&acd->events))
-                return N_ACD_E_DONE;
+        if (c_list_is_empty(&acd->events)) {
+                if (acd->state == N_ACD_STATE_INIT)
+                        return N_ACD_E_STOPPED;
+                else
+                        return N_ACD_E_DONE;
+        }
 
         acd->current = c_list_first_entry(&acd->events, NAcdEventNode, link);
         c_list_unlink(&acd->current->link);
@@ -969,10 +971,6 @@ error:
         return r;
 }
 
-static bool n_acd_is_running(NAcd *acd) {
-        return acd->state != N_ACD_STATE_INIT;
-}
-
 _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
         uint64_t now, delay;
         int r;
@@ -982,8 +980,8 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
             !config->ip.s_addr)
                 return N_ACD_E_INVALID_ARGUMENT;
 
-        if (n_acd_is_running(acd))
-                return N_ACD_E_STARTED;
+        if (acd->state != N_ACD_STATE_INIT || !c_list_is_empty(&acd->events))
+                return N_ACD_E_BUSY;
 
         acd->config = *config;
 
@@ -1021,9 +1019,6 @@ _public_ void n_acd_stop(NAcd *acd) {
         acd->n_iteration = 0;
         acd->last_defend = 0;
         timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-        n_acd_flush_events(acd);
-
-        assert(c_list_is_empty(&acd->events));
 
         if (acd->fd_socket >= 0) {
                 assert(acd->fd_epoll >= 0);
@@ -1039,8 +1034,8 @@ _public_ int n_acd_announce(NAcd *acd, unsigned int defend) {
 
         if (defend >= _N_ACD_DEFEND_N)
                 return N_ACD_E_INVALID_ARGUMENT;
-        if (!n_acd_is_running(acd))
-                return N_ACD_E_STOPPED;
+        if (acd->state != N_ACD_STATE_CONFIGURING)
+                return N_ACD_E_BUSY;
 
         /*
          * Sending announcements means we finished probing and use the address
