@@ -177,6 +177,14 @@ static NAcdEventNode *n_acd_event_node_free(NAcdEventNode *node) {
         return NULL;
 }
 
+/**
+ * n_acd_new() - create a new ACD context
+ * @acdp:       output argument for context
+ *
+ * Create a new ACD context and return it in @acdp.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
 _public_ int n_acd_new(NAcd **acdp) {
         struct timespec ts;
         NAcd *acd;
@@ -244,6 +252,14 @@ error:
         return r;
 }
 
+/**
+ * n_acd_free() - free an ACD context
+ *
+ * Frees all resources held by the context. This may be called at any time,
+ * but doing so invalidates all data owned by the context.
+ *
+ * Return: NULL.
+ */
 _public_ NAcd *n_acd_free(NAcd *acd) {
         NAcdEventNode *node;
 
@@ -274,6 +290,14 @@ _public_ NAcd *n_acd_free(NAcd *acd) {
         return NULL;
 }
 
+/**
+ * n_acd_get_fd() - get pollable file descriptor
+ * @acd:        ACD context
+ * @fdp:        output argument for file descriptor
+ *
+ * Returns a file descriptor in @fdp. This filedescriptor can be polled by
+ * the caller to indicate when the ACD context can be dispatched.
+ */
 _public_ void n_acd_get_fd(NAcd *acd, int *fdp) {
         *fdp = acd->fd_epoll;
 }
@@ -760,6 +784,14 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
         return N_ACD_E_PREEMPTED;
 }
 
+/**
+ * n_acd_dispatch() - dispatch ACD context
+ * @acd:        ACD context
+ *
+ * Return: 0 on successful dispatch of all pending events, N_ACD_E_PREEMPT in
+ *         case there are more still more events to be dispatched, or a
+ *         negative error code on failure.
+ */
 _public_ int n_acd_dispatch(NAcd *acd) {
         struct epoll_event events[2];
         int n, i, r = 0;
@@ -810,6 +842,45 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                 return r;
 }
 
+/**
+ * n_acd_pop_event() - get the next pending event
+ * @acd:        ACD context
+ * @eventp:     output argument for the event
+ *
+ * Returns a pointer to the next pending event. The event is still owend by
+ * the context, and is only valid until the next call to n_acd_pop_event()
+ * or until the context is freed.
+ *
+ * The possible events are:
+ *  * N_ACD_EVENT_READY:    The configured IP address was probed successfully
+ *                          and is ready to be used. Once configured on the
+ *                          interface, the caller must call n_acd_announce()
+ *                          to announce and start defending the address.
+ *                          No further events may be received before
+ *                          n_acd_announce() has been called.
+ *  * N_ACD_EVENT_USED:     Someone is already using the IP address being
+ *                          probed. The engine was stopped, and the caller
+ *                          may restart it to try again.
+ *  * N_ACD_EVENT_DEFENDED: A conflict was detected for the announced IP
+ *                          address, and the engine attempted to defend it.
+ *                          This is purely informational, and no action is
+ *                          required by the caller.
+ *  * N_ACD_EVENT_CONFLICT: A conflict was detected for the announced IP
+ *                          address, and the engine was not able to defend
+ *                          it (according to the configured policy). The
+ *                          engine has stoppde, the caller must stop using
+ *                          the address immediately, and may restart the
+ *                          engine to retry.
+ *  * N_ACD_EVENT_DOWN:     A network error was detected. The engine was
+ *                          stopped and it is the responsibility of the
+ *                          caller to restart it once the network may be
+ *                          functional again.
+ *
+ * Returns: 0 on success, N_ACD_E_STOPPED if there are no more events and
+ *          the engine has been stopped, N_ACD_E_DONE if there are no more
+ *          events, but the engine is still running, or a negative error
+ *          code on failure.
+ */
 _public_ int n_acd_pop_event(NAcd *acd, NAcdEvent **eventp) {
         acd->current = n_acd_event_node_free(acd->current);
 
@@ -971,6 +1042,20 @@ error:
         return r;
 }
 
+/**
+ * n_acd_start() - start the ACD engine
+ * @acd:        ACD context
+ * @config:     description of interface and desired IP address
+ *
+ * Start probing the given address on the given interface.
+ *
+ * The engine must not already be running, and there must not be
+ * any pending events.
+ *
+ * Returns: 0 on success, N_ACD_E_INVALID_ARGUMENT in case the configuration
+ *          was invalid, N_ACD_E_BUSY if the engine is running or there are
+ *          pending events, or a negative error code on failure.
+ */
 _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
         uint64_t now, delay;
         int r;
@@ -1013,6 +1098,13 @@ error:
         return r;
 }
 
+/**
+ * n_acd_stop() - stop the ACD engine
+ * @acd:        ACD context
+ *
+ * Stop the engine. No new events may be triggered, but pending events are not
+ * flushed. Before calling n_acd_start() again all pending events must be popped.
+ */
 _public_ void n_acd_stop(NAcd *acd) {
         acd->state = N_ACD_STATE_INIT;
         acd->defend = N_ACD_DEFEND_NEVER;
@@ -1028,6 +1120,23 @@ _public_ void n_acd_stop(NAcd *acd) {
         }
 }
 
+/**
+ * n_acd_announce() - announce the configured IP address
+ * @acd:        ACD context
+ * @defend:     defence policy
+ *
+ * Announce the IP address on the local link, and start defending it according
+ * to the given policy, which mut be one of N_ACD_DEFEND_ONCE,
+ * N_ACD_DEFEND_NEVER, or N_ACD_DEFEND_ALWAYS.
+ *
+ * This must be called after the engine in response to an N_ACD_EVENT_READY
+ * event, and only after the given address has been configured on the given
+ * interface.
+ *
+ * Return: 0 on success, N_ACD_E_INVALID_ARGUMENT in case the defence policy
+ *         is invalid, N_ACD_E_BUSY if this is not in response to a
+ *         N_ACD_EVENT_READY event, or a negative error code on failure.
+ */
 _public_ int n_acd_announce(NAcd *acd, unsigned int defend) {
         uint64_t now;
         int r;
