@@ -557,11 +557,11 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                  * treat this as a probe failure. That is, notify the caller of
                  * the conflict and wait for further instructions. We do not
                  * react to this, until the caller tells us what to do. But we
-                 * immediately disable the timer, since there is no point in
+                 * immediately stop the engine, since there is no point in
                  * continuing the probing.
                  */
                 n_acd_remember_conflict(acd, now);
-                timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+                n_acd_stop(acd);
                 r = n_acd_push_event(acd, N_ACD_EVENT_USED, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
                 if (r)
                         return r;
@@ -599,7 +599,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
 
                 if (acd->defend == N_ACD_DEFEND_NEVER) {
                         n_acd_remember_conflict(acd, now);
-                        timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+                        n_acd_stop(acd);
                         r = n_acd_push_event(acd, N_ACD_EVENT_CONFLICT, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
                         if (r)
                                 return r;
@@ -615,7 +615,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                                         return r;
                         } else if (acd->defend == N_ACD_DEFEND_ONCE) {
                                 n_acd_remember_conflict(acd, now);
-                                timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+                                n_acd_stop(acd);
                                 r = n_acd_push_event(acd, N_ACD_EVENT_CONFLICT, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
                                 if (r)
                                         return r;
