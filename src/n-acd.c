@@ -109,6 +109,7 @@ enum {
 enum {
         N_ACD_STATE_INIT,
         N_ACD_STATE_PROBING,
+        N_ACD_STATE_CONFIGURING,
         N_ACD_STATE_ANNOUNCING,
 };
 
@@ -450,6 +451,8 @@ static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
                         r = n_acd_push_event(acd, N_ACD_EVENT_READY, NULL, NULL, NULL);
                         if (r)
                                 return r;
+
+                        acd->state = N_ACD_STATE_CONFIGURING;
                 } else {
                         /*
                          * We have not sent all 3 probes, yet. A timer fired,
@@ -498,6 +501,7 @@ static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
                 break;
 
         case N_ACD_STATE_INIT:
+        case N_ACD_STATE_CONFIGURING:
         default:
                 /*
                  * There are no timeouts in these states. If we trigger one,
@@ -563,6 +567,20 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                 r = n_acd_push_event(acd, N_ACD_EVENT_USED, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
                 if (r)
                         return r;
+
+                break;
+
+        case N_ACD_STATE_CONFIGURING:
+                /*
+                 * We are waiting for the caller to configure the interface and
+                 * start ANNOUNCING. In this state, we cannot defend the address
+                 * as that would indicate that it is ready to be used, and we
+                 * cannot signal CONFLICT or USED as the caller may already have
+                 * started to use the address (and may have configured the engine
+                 * to always defend it, which means they should be able to rely on
+                 * never losing it after READY). Simply drop the event, and rely
+                 * on the anticipated ANNOUNCE to trigger it again.
+                 */
 
                 break;
 
