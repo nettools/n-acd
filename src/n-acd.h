@@ -30,7 +30,7 @@ enum {
 typedef struct NAcd NAcd;
 
 typedef struct NAcdConfig {
-        unsigned int ifindex;
+        int ifindex;
         struct ether_addr mac;
         struct in_addr ip;
 } NAcdConfig;
