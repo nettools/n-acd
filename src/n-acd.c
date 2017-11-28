@@ -448,7 +448,7 @@ static void n_acd_remember_conflict(NAcd *acd, uint64_t now) {
         }
 }
 
-static int n_acd_handle_timeout(NAcd *acd, uint64_t v) {
+static int n_acd_handle_timeout(NAcd *acd) {
         int r;
 
         switch (acd->state) {
@@ -687,7 +687,7 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
                                  * return. We do NOT fall-through to EPOLLHUP handling,
                                  * as we always must drain buffers first.
                                  */
-                                return n_acd_handle_timeout(acd, v);
+                                return n_acd_handle_timeout(acd);
                         } else if (r >= 0) {
                                 /*
                                  * Kernel guarantees 8-byte reads; fail hard if it
