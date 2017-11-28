@@ -1060,7 +1060,7 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
         uint64_t now, delay;
         int r;
 
-        if (!config->ifindex ||
+        if (config->ifindex <= 0 ||
             !memcmp(config->mac.ether_addr_octet, (uint8_t[ETH_ALEN]){ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, ETH_ALEN) ||
             !config->ip.s_addr)
                 return N_ACD_E_INVALID_ARGUMENT;
