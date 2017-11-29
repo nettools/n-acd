@@ -101,6 +101,8 @@
  */
 #define N_ACD_E_DOWN (INT_MAX)
 
+#define TIME_INFINITY ((uint64_t) -1)
+
 enum {
         N_ACD_EPOLL_TIMER,
         N_ACD_EPOLL_SOCKET,
@@ -201,6 +203,7 @@ _public_ int n_acd_new(NAcd **acdp) {
         acd->state = N_ACD_STATE_INIT;
         acd->defend = N_ACD_DEFEND_NEVER;
         acd->events = (CList)C_LIST_INIT(acd->events);
+        acd->last_conflict = TIME_INFINITY;
 
         /*
          * We need random jitter for all timeouts when handling ARP probes. Use
@@ -1074,14 +1077,15 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
         if (r < 0)
                 goto error;
 
-        r = n_acd_now(&now);
-        if (r < 0)
-                goto error;
+        delay = 0;
+        if (acd->last_conflict != TIME_INFINITY) {
+                r = n_acd_now(&now);
+                if (r < 0)
+                        goto error;
 
-        if (now < acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC)
-                delay = acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC - now;
-        else
-                delay = 0;
+                if (now < acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC)
+                        delay = acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC - now;
+        }
 
         r = n_acd_schedule(acd, delay, N_ACD_RFC_PROBE_WAIT_USEC);
         if (r < 0)
@@ -1154,12 +1158,14 @@ _public_ int n_acd_announce(NAcd *acd, unsigned int defend) {
          * force-use an address regardless of conflicts, then this will not
          * trigger and the conflict counter stays untouched.
          */
-        r = n_acd_now(&now);
-        if (r < 0)
-                return r;
+        if (acd->last_conflict != TIME_INFINITY) {
+                r = n_acd_now(&now);
+                if (r < 0)
+                        return r;
 
-        if (now >= acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC)
-                acd->n_conflicts = 0;
+                if (now >= acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC)
+                        acd->n_conflicts = 0;
+        }
 
         /*
          * Instead of sending the first announcement here, we schedule an idle
