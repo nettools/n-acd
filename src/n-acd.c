@@ -518,7 +518,7 @@ static int n_acd_handle_timeout(NAcd *acd) {
                         return r;
 
                 if (++acd->n_iteration < N_ACD_RFC_ANNOUNCE_NUM) {
-                        r = n_acd_schedule(acd, N_ACD_RFC_ANNOUNCE_WAIT_USEC, 0);
+                        r = n_acd_schedule(acd, N_ACD_RFC_ANNOUNCE_INTERVAL_USEC, 0);
                         if (r < 0)
                                 return r;
                 }
