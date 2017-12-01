@@ -18,6 +18,7 @@
 
 #include <assert.h>
 #include <c-list.h>
+#include <c-siphash.h>
 #include <endian.h>
 #include <errno.h>
 #include <limits.h>
@@ -179,6 +180,39 @@ static NAcdEventNode *n_acd_event_node_free(NAcdEventNode *node) {
         return NULL;
 }
 
+static int n_acd_get_random(unsigned int *random) {
+        uint8_t hash_seed[] = { 0x3a, 0x0c, 0xa6, 0xdd, 0x44, 0xef, 0x5f, 0x7a, 0x5e, 0xd7, 0x25, 0x37, 0xbf, 0x4e, 0x80, 0xa1 };
+        CSipHash hash = C_SIPHASH_NULL;
+        struct timespec ts;
+        void *p;
+        int r;
+
+        /*
+         * We need random jitter for all timeouts when handling ARP probes. Use
+         * AT_RANDOM to get a seed for rand_r(3p), if available (should always
+         * be available on linux). See the time-out scheduler for details.
+         * Additionally, we include the current time in the seed. This avoids
+         * using the same jitter in case you run multiple ACD engines in the
+         * same process. Lastly, the seed is hashed with SipHash24 to avoid
+         * exposing the value of AT_RANDOM on the network.
+         */
+        c_siphash_init(&hash, hash_seed);
+
+        p = (void *)getauxval(AT_RANDOM);
+        if (p)
+                c_siphash_append(&hash, p, sizeof(unsigned int));
+
+        r = clock_gettime(CLOCK_BOOTTIME, &ts);
+        if (r < 0)
+                return -n_acd_errno();
+
+        c_siphash_append(&hash, (const uint8_t *)&ts.tv_sec, sizeof(ts.tv_sec));
+        c_siphash_append(&hash, (const uint8_t *)&ts.tv_nsec, sizeof(ts.tv_nsec));
+
+        *random = c_siphash_finalize(&hash);
+        return 0;
+}
+
 /**
  * n_acd_new() - create a new ACD context
  * @acdp:       output argument for context
@@ -188,9 +222,7 @@ static NAcdEventNode *n_acd_event_node_free(NAcdEventNode *node) {
  * Return: 0 on success, or a negative error code on failure.
  */
 _public_ int n_acd_new(NAcd **acdp) {
-        struct timespec ts;
         NAcd *acd;
-        void *p;
         int r;
 
         acd = calloc(1, sizeof(*acd));
@@ -205,25 +237,9 @@ _public_ int n_acd_new(NAcd **acdp) {
         acd->events = (CList)C_LIST_INIT(acd->events);
         acd->last_conflict = TIME_INFINITY;
 
-        /*
-         * We need random jitter for all timeouts when handling ARP probes. Use
-         * AT_RANDOM to get a seed for rand_r(3p), if available (should always
-         * be available on linux). See the time-out scheduler for details.
-         * Additionally, we include the current time in the seed. This avoids
-         * using the same jitter in case you run multiple ACD engines in the
-         * same process.
-         */
-        p = (void *)getauxval(AT_RANDOM);
-        if (p)
-                acd->seed = *(unsigned int *)p;
-
-        r = clock_gettime(CLOCK_BOOTTIME, &ts);
-        if (r < 0) {
-                r = -n_acd_errno();
-                goto error;
-        }
-
-        acd->seed ^= ts.tv_nsec ^ ts.tv_sec;
+        r = n_acd_get_random(&acd->seed);
+        if (r < 0)
+                return r;
 
         acd->fd_epoll = epoll_create1(EPOLL_CLOEXEC);
         if (acd->fd_epoll < 0) {
