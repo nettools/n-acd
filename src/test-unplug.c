@@ -7,10 +7,11 @@
 #include <stdlib.h>
 #include "test.h"
 
-static void test_unplug_down(int ifindex, const struct ether_addr *mac, unsigned int run) {
+static void test_unplug_down(int ifindex, uint8_t *mac, size_t n_mac, unsigned int run) {
         NAcdConfig config = {
                 .ifindex = ifindex,
-                .mac = *mac,
+                .mac = mac,
+                .n_mac = n_mac,
                 .ip = { htobe32((192 << 24) | (168 << 16) | (1 << 0)) },
         };
         struct pollfd pfds;
@@ -73,7 +74,7 @@ int main(int argc, char **argv) {
         test_veth_new(&ifindex, &mac, NULL, NULL);
 
         for (i = 0; i < 5; ++i) {
-                test_unplug_down(ifindex, &mac, i);
+                test_unplug_down(ifindex, mac.ether_addr_octet, sizeof(mac.ether_addr_octet), i);
                 test_veth_cmd(ifindex, "up");
         }
 

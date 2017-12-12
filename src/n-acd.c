@@ -118,6 +118,7 @@ enum {
 
 typedef struct NAcdEventNode {
         NAcdEvent event;
+        uint8_t sender[ETH_ALEN];
         CList link;
 } NAcdEventNode;
 
@@ -129,6 +130,7 @@ struct NAcd {
 
         /* configuration */
         NAcdConfig config;
+        uint8_t mac[ETH_ALEN];
 
         /* runtime */
         int fd_socket;
@@ -332,17 +334,23 @@ static int n_acd_push_event(NAcd *acd, unsigned int event, uint16_t *operation, 
         switch (event) {
         case N_ACD_EVENT_USED:
                 node->event.used.operation = be16toh(*operation);
-                memcpy(&node->event.used.sender, sender, sizeof(node->event.used.sender));
+                memcpy(node->sender, sender, sizeof(node->sender));
+                node->event.used.sender = node->sender;
+                node->event.used.n_sender = sizeof(node->sender);
                 memcpy(&node->event.used.target, target, sizeof(node->event.used.target));
                 break;
         case N_ACD_EVENT_CONFLICT:
                 node->event.conflict.operation = be16toh(*operation);
-                memcpy(&node->event.conflict.sender, sender, sizeof(node->event.conflict.sender));
+                memcpy(node->sender, sender, sizeof(node->sender));
+                node->event.used.sender = node->sender;
+                node->event.used.n_sender = sizeof(node->sender);
                 memcpy(&node->event.conflict.target, target, sizeof(node->event.conflict.target));
                 break;
         case N_ACD_EVENT_DEFENDED:
                 node->event.defended.operation = be16toh(*operation);
-                memcpy(&node->event.defended.sender, sender, sizeof(node->event.defended.sender));
+                memcpy(node->sender, sender, sizeof(node->sender));
+                node->event.used.sender = node->sender;
+                node->event.used.n_sender = sizeof(node->sender);
                 memcpy(&node->event.defended.target, target, sizeof(node->event.defended.target));
                 break;
         case N_ACD_EVENT_READY:
@@ -415,13 +423,13 @@ static int n_acd_send(NAcd *acd, const struct in_addr *spa) {
         struct ether_arp arp = {
                 .ea_hdr.ar_hrd = htobe16(ARPHRD_ETHER),
                 .ea_hdr.ar_pro = htobe16(ETHERTYPE_IP),
-                .ea_hdr.ar_hln = ETH_ALEN,
+                .ea_hdr.ar_hln = sizeof(acd->mac),
                 .ea_hdr.ar_pln = sizeof(uint32_t),
                 .ea_hdr.ar_op = htobe16(ARPOP_REQUEST),
         };
         ssize_t l;
 
-        memcpy(arp.arp_sha, acd->config.mac.ether_addr_octet, ETH_ALEN);
+        memcpy(arp.arp_sha, acd->mac, sizeof(acd->mac));
         memcpy(arp.arp_tpa, &acd->config.ip.s_addr, sizeof(uint32_t));
 
         if (spa)
@@ -930,13 +938,13 @@ static int n_acd_bind_socket(NAcd *acd, int s) {
                 uint32_t u32[1];
         } mac = {
                 .u8 = {
-                        acd->config.mac.ether_addr_octet[0],
-                        acd->config.mac.ether_addr_octet[1],
-                        acd->config.mac.ether_addr_octet[2],
-                        acd->config.mac.ether_addr_octet[3],
-                        acd->config.mac.ether_addr_octet[4],
-                        acd->config.mac.ether_addr_octet[5],
-                }
+                        acd->mac[0],
+                        acd->mac[1],
+                        acd->mac[2],
+                        acd->mac[3],
+                        acd->mac[4],
+                        acd->mac[5],
+                },
         };
         struct sock_filter filter[] = {
                 /*
@@ -1080,7 +1088,9 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
         int r;
 
         if (config->ifindex <= 0 ||
-            !memcmp(config->mac.ether_addr_octet, (uint8_t[ETH_ALEN]){ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, ETH_ALEN) ||
+            config->transport != N_ACD_TRANSPORT_ETHERNET ||
+            config->n_mac != ETH_ALEN ||
+            !memcmp(config->mac, (uint8_t[ETH_ALEN]){ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, ETH_ALEN) ||
             !config->ip.s_addr)
                 return N_ACD_E_INVALID_ARGUMENT;
 
@@ -1088,6 +1098,8 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
                 return N_ACD_E_BUSY;
 
         acd->config = *config;
+        memcpy(acd->mac, config->mac, config->n_mac);
+        acd->config.mac = acd->mac;
 
         r = n_acd_setup_socket(acd);
         if (r < 0)

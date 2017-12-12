@@ -34,9 +34,11 @@ static void test_api_management(void) {
 }
 
 static void test_api_runtime(void) {
+        uint8_t mac[6] = { 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54 };
         NAcdConfig config = {
                 .ifindex = 1,
-                .mac = { { 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54 } },
+                .mac = mac,
+                .n_mac = sizeof(mac),
                 .ip = { htobe32((127 << 24) | (1 << 0)) },
         };
         NAcd *acd;

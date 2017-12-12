@@ -12,7 +12,6 @@
 extern "C" {
 #endif
 
-#include <netinet/if_ether.h>
 #include <netinet/in.h>
 #include <stdbool.h>
 
@@ -31,7 +30,9 @@ typedef struct NAcd NAcd;
 
 typedef struct NAcdConfig {
         int ifindex;
-        struct ether_addr mac;
+        unsigned int transport;
+        const uint8_t *mac;
+        size_t n_mac;
         struct in_addr ip;
 } NAcdConfig;
 
@@ -42,11 +43,17 @@ typedef struct NAcdEvent {
                 } ready, down;
                 struct {
                         uint16_t operation;
-                        struct ether_addr sender;
+                        uint8_t *sender;
+                        size_t n_sender;
                         struct in_addr target;
                 } used, defended, conflict;
         };
 } NAcdEvent;
+
+enum {
+        N_ACD_TRANSPORT_ETHERNET,
+        _N_ACD_TRANSPORT_N,
+};
 
 enum {
         N_ACD_EVENT_READY,

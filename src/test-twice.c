@@ -7,15 +7,17 @@
 #include <stdlib.h>
 #include "test.h"
 
-static void test_unused(int ifindex1, const struct ether_addr *mac1, int ifindex2, const struct ether_addr *mac2) {
+static void test_unused(int ifindex1, uint8_t *mac1, size_t n_mac1, int ifindex2, uint8_t *mac2, size_t n_mac2) {
         NAcdConfig config1 = {
                 .ifindex = ifindex1,
-                .mac = *mac1,
+                .mac = mac1,
+                .n_mac = n_mac1,
                 .ip = { htobe32((192 << 24) | (168 << 16) | (1 << 0)) },
         };
         NAcdConfig config2 = {
                 .ifindex = ifindex2,
-                .mac = *mac2,
+                .mac = mac2,
+                .n_mac = n_mac2,
                 .ip = { htobe32((192 << 24) | (168 << 16) | (1 << 0)) },
         };
         struct pollfd pfds[2];
@@ -85,7 +87,7 @@ int main(int argc, char **argv) {
                 return r;
 
         test_veth_new(&ifindex1, &mac1, &ifindex2, &mac2);
-        test_unused(ifindex1, &mac1, ifindex2, &mac2);
+        test_unused(ifindex1, mac1.ether_addr_octet, sizeof(mac2.ether_addr_octet), ifindex2, mac2.ether_addr_octet, sizeof(mac2.ether_addr_octet));
 
         return 0;
 }
