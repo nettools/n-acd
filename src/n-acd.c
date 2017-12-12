@@ -184,7 +184,7 @@ static int n_acd_get_random(unsigned int *random) {
         uint8_t hash_seed[] = { 0x3a, 0x0c, 0xa6, 0xdd, 0x44, 0xef, 0x5f, 0x7a, 0x5e, 0xd7, 0x25, 0x37, 0xbf, 0x4e, 0x80, 0xa1 };
         CSipHash hash = C_SIPHASH_NULL;
         struct timespec ts;
-        void *p;
+        const uint8_t *p;
         int r;
 
         /*
@@ -198,9 +198,9 @@ static int n_acd_get_random(unsigned int *random) {
          */
         c_siphash_init(&hash, hash_seed);
 
-        p = (void *)getauxval(AT_RANDOM);
+        p = (const uint8_t *)getauxval(AT_RANDOM);
         if (p)
-                c_siphash_append(&hash, p, sizeof(unsigned int));
+                c_siphash_append(&hash, p, 16);
 
         r = clock_gettime(CLOCK_BOOTTIME, &ts);
         if (r < 0)
