@@ -34,6 +34,7 @@ typedef struct NAcdConfig {
         const uint8_t *mac;
         size_t n_mac;
         struct in_addr ip;
+        uint64_t timeout_msec;
 } NAcdConfig;
 
 typedef struct NAcdEvent {

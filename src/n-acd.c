@@ -70,23 +70,21 @@
  *     no such future standards exist.) [...]
  *
  * Unfortunately, no-one ever stepped up to write a "future standard" to revise
- * the timings. A 9s timeout for successful link setups is not acceptable in
- * today. Hence, we will just go forward and ignore the proposed values. On both
+ * the timings. A 9s timeout for successful link setups is not acceptable today.
+ * Hence, we will just go forward and ignore the proposed values. On both
  * wired and wireless local links round-trip latencies of below 3ms are common,
- * while latencies above 10ms are rarely seen. We just go ahead and use an
- * interval of 50ms to 10ms for the probes, plus a 200ms wait interval. This
- * should properly honor slower networks, as well as recognize the need of the
- * other peers to schedule the needed processes to handle the requests.
- * If this annoys the hell out of you, file a bug report and we can make the
- * speedup a configurable option of the context object.
+ * while latencies above 10ms are rarely seen. We require the caller to set a
+ * timeout multiplier, where 1 corresponds to a total probe time of 0.5 ms and
+ * 1.0 ms. On modern networks a multiplier of about 100 should be a reasonable
+ * default. To comply with the RFC select a multiplier of 9000.
  */
 #define N_ACD_RFC_PROBE_NUM                     (3)
-#define N_ACD_RFC_PROBE_WAIT_USEC               (UINT64_C(50000)) /* 50ms */
-#define N_ACD_RFC_PROBE_MIN_USEC                (UINT64_C(50000)) /* 50ms */
-#define N_ACD_RFC_PROBE_MAX_USEC                (UINT64_C(100000)) /* 100ms */
+#define N_ACD_RFC_PROBE_WAIT_USEC               (UINT64_C(111)) /* 111us */
+#define N_ACD_RFC_PROBE_MIN_USEC                (UINT64_C(111)) /* 111us */
+#define N_ACD_RFC_PROBE_MAX_USEC                (UINT64_C(333)) /* 333us */
 #define N_ACD_RFC_ANNOUNCE_NUM                  (3)
-#define N_ACD_RFC_ANNOUNCE_WAIT_USEC            (UINT64_C(200000)) /* 200ms */
-#define N_ACD_RFC_ANNOUNCE_INTERVAL_USEC        (UINT64_C(500000)) /* 500ms */
+#define N_ACD_RFC_ANNOUNCE_WAIT_USEC            (UINT64_C(222)) /* 222us */
+#define N_ACD_RFC_ANNOUNCE_INTERVAL_USEC        (UINT64_C(222)) /* 222us */
 #define N_ACD_RFC_MAX_CONFLICTS                 (10)
 #define N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC      (UINT64_C(60000000)) /* 60s */
 #define N_ACD_RFC_DEFEND_INTERVAL_USEC          (UINT64_C(10000000)) /* 10s */
@@ -131,6 +129,7 @@ struct NAcd {
         /* configuration */
         NAcdConfig config;
         uint8_t mac[ETH_ALEN];
+        uint64_t timeout_multiplier;
 
         /* runtime */
         int fd_socket;
@@ -517,10 +516,10 @@ static int n_acd_handle_timeout(NAcd *acd) {
                                 return r;
 
                         if (++acd->n_iteration >= N_ACD_RFC_PROBE_NUM)
-                                r = n_acd_schedule(acd, N_ACD_RFC_ANNOUNCE_WAIT_USEC, 0);
+                                r = n_acd_schedule(acd, acd->timeout_multiplier * N_ACD_RFC_ANNOUNCE_WAIT_USEC, 0);
                         else
-                                r = n_acd_schedule(acd, N_ACD_RFC_PROBE_MIN_USEC,
-                                                   N_ACD_RFC_PROBE_MAX_USEC - N_ACD_RFC_PROBE_MIN_USEC);
+                                r = n_acd_schedule(acd, acd->timeout_multiplier * N_ACD_RFC_PROBE_MIN_USEC,
+                                                   acd->timeout_multiplier * (N_ACD_RFC_PROBE_MAX_USEC - N_ACD_RFC_PROBE_MIN_USEC));
                         if (r < 0)
                                 return r;
                 }
@@ -542,7 +541,7 @@ static int n_acd_handle_timeout(NAcd *acd) {
                         return r;
 
                 if (++acd->n_iteration < N_ACD_RFC_ANNOUNCE_NUM) {
-                        r = n_acd_schedule(acd, N_ACD_RFC_ANNOUNCE_INTERVAL_USEC, 0);
+                        r = n_acd_schedule(acd, acd->timeout_multiplier * N_ACD_RFC_ANNOUNCE_INTERVAL_USEC, 0);
                         if (r < 0)
                                 return r;
                 }
@@ -1091,7 +1090,8 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
             config->transport != N_ACD_TRANSPORT_ETHERNET ||
             config->n_mac != ETH_ALEN ||
             !memcmp(config->mac, (uint8_t[ETH_ALEN]){ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, ETH_ALEN) ||
-            !config->ip.s_addr)
+            !config->ip.s_addr ||
+            !config->timeout_msec)
                 return N_ACD_E_INVALID_ARGUMENT;
 
         if (acd->state != N_ACD_STATE_INIT || !c_list_is_empty(&acd->events))
@@ -1100,6 +1100,7 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
         acd->config = *config;
         memcpy(acd->mac, config->mac, config->n_mac);
         acd->config.mac = acd->mac;
+        acd->timeout_multiplier = config->timeout_msec;
 
         r = n_acd_setup_socket(acd);
         if (r < 0)
@@ -1115,7 +1116,7 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
                         delay = acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC - now;
         }
 
-        r = n_acd_schedule(acd, delay, N_ACD_RFC_PROBE_WAIT_USEC);
+        r = n_acd_schedule(acd, delay, acd->timeout_multiplier * N_ACD_RFC_PROBE_WAIT_USEC);
         if (r < 0)
                 goto error;
 

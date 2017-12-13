@@ -40,6 +40,7 @@ static void test_api_runtime(void) {
                 .mac = mac,
                 .n_mac = sizeof(mac),
                 .ip = { htobe32((127 << 24) | (1 << 0)) },
+                .timeout_msec = 100,
         };
         NAcd *acd;
         int r;

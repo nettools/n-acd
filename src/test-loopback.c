@@ -14,6 +14,7 @@ static void test_loopback(int ifindex, uint8_t *mac, size_t n_mac) {
                 .mac = mac,
                 .n_mac = n_mac,
                 .ip = { htobe32((192 << 24) | (168 << 16) | (1 << 0)) },
+                .timeout_msec = 100,
         };
         struct pollfd pfds;
         NAcd *acd;

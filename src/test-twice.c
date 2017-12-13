@@ -13,12 +13,14 @@ static void test_unused(int ifindex1, uint8_t *mac1, size_t n_mac1, int ifindex2
                 .mac = mac1,
                 .n_mac = n_mac1,
                 .ip = { htobe32((192 << 24) | (168 << 16) | (1 << 0)) },
+                .timeout_msec = 100,
         };
         NAcdConfig config2 = {
                 .ifindex = ifindex2,
                 .mac = mac2,
                 .n_mac = n_mac2,
                 .ip = { htobe32((192 << 24) | (168 << 16) | (1 << 0)) },
+                .timeout_msec = 100,
         };
         struct pollfd pfds[2];
         NAcd *acd1, *acd2;
