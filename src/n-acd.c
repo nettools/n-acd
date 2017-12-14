@@ -286,7 +286,7 @@ _public_ NAcd *n_acd_free(NAcd *acd) {
         if (!acd)
                 return NULL;
 
-        n_acd_stop(acd);
+        (void)n_acd_stop(acd);
 
         acd->current = n_acd_event_node_free(acd->current);
 
@@ -613,7 +613,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                  * continuing the probing.
                  */
                 n_acd_remember_conflict(acd, now);
-                n_acd_stop(acd);
+                (void)n_acd_stop(acd);
                 r = n_acd_push_event(acd, N_ACD_EVENT_USED, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
                 if (r)
                         return r;
@@ -651,7 +651,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
 
                 if (acd->defend == N_ACD_DEFEND_NEVER) {
                         n_acd_remember_conflict(acd, now);
-                        n_acd_stop(acd);
+                        (void)n_acd_stop(acd);
                         r = n_acd_push_event(acd, N_ACD_EVENT_CONFLICT, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
                         if (r)
                                 return r;
@@ -667,7 +667,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                                         return r;
                         } else if (acd->defend == N_ACD_DEFEND_ONCE) {
                                 n_acd_remember_conflict(acd, now);
-                                n_acd_stop(acd);
+                                (void)n_acd_stop(acd);
                                 r = n_acd_push_event(acd, N_ACD_EVENT_CONFLICT, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
                                 if (r)
                                         return r;
@@ -856,7 +856,7 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                  * allows bailing out of deep call-paths and then handling the
                  * error gracefully here.
                  */
-                n_acd_stop(acd);
+                (void)n_acd_stop(acd);
                 r = n_acd_push_event(acd, N_ACD_EVENT_DOWN, NULL, NULL, NULL);
                 if (r)
                         return r;
@@ -1140,7 +1140,7 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
         return 0;
 
 error:
-        n_acd_stop(acd);
+        (void)n_acd_stop(acd);
         return r;
 }
 
@@ -1150,8 +1150,10 @@ error:
  *
  * Stop the engine. No new events may be triggered, but pending events are not
  * flushed. Before calling n_acd_start() again all pending events must be popped.
+ *
+ * Return: 0 on success, negative error code on failure.
  */
-_public_ void n_acd_stop(NAcd *acd) {
+_public_ int n_acd_stop(NAcd *acd) {
         acd->state = N_ACD_STATE_INIT;
         acd->defend = N_ACD_DEFEND_NEVER;
         acd->n_iteration = 0;
@@ -1164,6 +1166,8 @@ _public_ void n_acd_stop(NAcd *acd) {
                 close(acd->fd_socket);
                 acd->fd_socket = -1;
         }
+
+        return 0;
 }
 
 /**

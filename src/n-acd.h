@@ -82,7 +82,7 @@ int n_acd_pop_event(NAcd *acd, NAcdEvent **eventp);
 int n_acd_announce(NAcd *acd, unsigned int defend);
 
 int n_acd_start(NAcd *acd, NAcdConfig *config);
-void n_acd_stop(NAcd *acd);
+int n_acd_stop(NAcd *acd);
 
 static inline void n_acd_freep(NAcd **acd) {
         if (*acd)
