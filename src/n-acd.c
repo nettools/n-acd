@@ -758,7 +758,7 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
                  * Note that we must use recv(2) over read(2), since the latter cannot
                  * deal with empty packets properly.
                  */
-                l = recv(acd->fd_socket, &packet, sizeof(packet), MSG_TRUNC);
+                l = recv(acd->fd_socket, &packet, sizeof(packet), 0);
                 if (l == (ssize_t)sizeof(packet)) {
                         /*
                          * We read a full ARP packet. We never fall-through to EPOLLHUP
@@ -767,7 +767,7 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
                         return n_acd_handle_packet(acd, &packet);
                 } else if (l >= 0) {
                         /*
-                         * The BPF filter discards wrong packets, so error out
+                         * The BPF filter discards short packets, so error out
                          * if something slips through for any reason. Don't silently
                          * ignore it, since we explicitly want to know if something
                          * went fishy.
@@ -951,7 +951,7 @@ static int n_acd_bind_socket(NAcd *acd, int s) {
                  * wire type, protocol type, and address lengths are correct.
                  */
                 BPF_STMT(BPF_LD + BPF_W + BPF_LEN, 0),                                                          /* A <- packet length */
-                BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, sizeof(struct ether_arp), 1, 0),                            /* packet == arp packet ? */
+                BPF_JUMP(BPF_JMP + BPF_JGE + BPF_K, sizeof(struct ether_arp), 1, 0),                            /* packet == arp packet ? */
                 BPF_STMT(BPF_RET + BPF_K, 0),                                                                   /* ignore */
                 BPF_STMT(BPF_LD + BPF_H + BPF_ABS, offsetof(struct ether_arp, ea_hdr.ar_hrd)),                  /* A <- header */
                 BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, ARPHRD_ETHER, 1, 0),                                        /* header == ethernet ? */
