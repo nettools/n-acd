@@ -1119,20 +1119,19 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
                 r = n_acd_schedule(acd, delay, acd->timeout_multiplier * N_ACD_RFC_PROBE_WAIT_USEC);
                 if (r < 0)
                         goto error;
-
-                acd->state = N_ACD_STATE_PROBING;
         } else {
                 /*
-                 * A zero timeout means we drop the probing alltogether, and consider
-                 * it successfull immediately.
+                 * A zero timeout means we drop the probing alltogether, and behave as if
+                 * the last probe succeeded immediately.
                  */
-                r = n_acd_push_event(acd, N_ACD_EVENT_READY, NULL, NULL, NULL);
-                if (r)
-                        return r;
+                acd->n_iteration = N_ACD_RFC_PROBE_NUM;
 
-                acd->state = N_ACD_STATE_CONFIGURING;
+                r = n_acd_schedule(acd, 0, 0);
+                if (r < 0)
+                        goto error;
         }
 
+        acd->state = N_ACD_STATE_PROBING;
         acd->defend = N_ACD_DEFEND_NEVER;
         acd->n_iteration = 0;
         acd->last_defend = 0;
