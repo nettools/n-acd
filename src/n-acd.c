@@ -1090,8 +1090,7 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
             config->transport != N_ACD_TRANSPORT_ETHERNET ||
             config->n_mac != ETH_ALEN ||
             !memcmp(config->mac, (uint8_t[ETH_ALEN]){ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff }, ETH_ALEN) ||
-            !config->ip.s_addr ||
-            !config->timeout_msec)
+            !config->ip.s_addr)
                 return N_ACD_E_INVALID_ARGUMENT;
 
         if (acd->state != N_ACD_STATE_INIT || !c_list_is_empty(&acd->events))
@@ -1106,21 +1105,34 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
         if (r < 0)
                 goto error;
 
-        delay = 0;
-        if (acd->last_conflict != TIME_INFINITY) {
-                r = n_acd_now(&now);
+        if (acd->timeout_multiplier) {
+                delay = 0;
+                if (acd->last_conflict != TIME_INFINITY) {
+                        r = n_acd_now(&now);
+                        if (r < 0)
+                                goto error;
+
+                        if (now < acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC)
+                                delay = acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC - now;
+                }
+
+                r = n_acd_schedule(acd, delay, acd->timeout_multiplier * N_ACD_RFC_PROBE_WAIT_USEC);
                 if (r < 0)
                         goto error;
 
-                if (now < acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC)
-                        delay = acd->last_conflict + N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC - now;
+                acd->state = N_ACD_STATE_PROBING;
+        } else {
+                /*
+                 * A zero timeout means we drop the probing alltogether, and consider
+                 * it successfull immediately.
+                 */
+                r = n_acd_push_event(acd, N_ACD_EVENT_READY, NULL, NULL, NULL);
+                if (r)
+                        return r;
+
+                acd->state = N_ACD_STATE_CONFIGURING;
         }
 
-        r = n_acd_schedule(acd, delay, acd->timeout_multiplier * N_ACD_RFC_PROBE_WAIT_USEC);
-        if (r < 0)
-                goto error;
-
-        acd->state = N_ACD_STATE_PROBING;
         acd->defend = N_ACD_DEFEND_NEVER;
         acd->n_iteration = 0;
         acd->last_defend = 0;
