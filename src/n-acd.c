@@ -288,6 +288,8 @@ _public_ NAcd *n_acd_free(NAcd *acd) {
 
         n_acd_stop(acd);
 
+        acd->current = n_acd_event_node_free(acd->current);
+
         while ((node = c_list_first_entry(&acd->events, NAcdEventNode, link)))
                 n_acd_event_node_free(node);
 
