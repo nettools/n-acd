@@ -214,6 +214,21 @@ static int n_acd_get_random(unsigned int *random) {
         return 0;
 }
 
+static void n_acd_reset(NAcd *acd) {
+        acd->state = N_ACD_STATE_INIT;
+        acd->defend = N_ACD_DEFEND_NEVER;
+        acd->n_iteration = 0;
+        acd->last_defend = 0;
+        timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
+
+        if (acd->fd_socket >= 0) {
+                assert(acd->fd_epoll >= 0);
+                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_socket, NULL);
+                close(acd->fd_socket);
+                acd->fd_socket = -1;
+        }
+}
+
 /**
  * n_acd_new() - create a new ACD context
  * @acdp:       output argument for context
@@ -286,7 +301,7 @@ _public_ NAcd *n_acd_free(NAcd *acd) {
         if (!acd)
                 return NULL;
 
-        (void)n_acd_stop(acd);
+        n_acd_reset(acd);
 
         acd->current = n_acd_event_node_free(acd->current);
 
@@ -613,7 +628,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                  * continuing the probing.
                  */
                 n_acd_remember_conflict(acd, now);
-                (void)n_acd_stop(acd);
+                n_acd_reset(acd);
                 r = n_acd_push_event(acd, N_ACD_EVENT_USED, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
                 if (r)
                         return r;
@@ -651,7 +666,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
 
                 if (acd->defend == N_ACD_DEFEND_NEVER) {
                         n_acd_remember_conflict(acd, now);
-                        (void)n_acd_stop(acd);
+                        n_acd_reset(acd);
                         r = n_acd_push_event(acd, N_ACD_EVENT_CONFLICT, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
                         if (r)
                                 return r;
@@ -667,7 +682,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                                         return r;
                         } else if (acd->defend == N_ACD_DEFEND_ONCE) {
                                 n_acd_remember_conflict(acd, now);
-                                (void)n_acd_stop(acd);
+                                n_acd_reset(acd);
                                 r = n_acd_push_event(acd, N_ACD_EVENT_CONFLICT, &packet->ea_hdr.ar_op, &packet->arp_sha, &packet->arp_tpa);
                                 if (r)
                                         return r;
@@ -862,7 +877,7 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                  * allows bailing out of deep call-paths and then handling the
                  * error gracefully here.
                  */
-                (void)n_acd_stop(acd);
+                n_acd_reset(acd);
                 r = n_acd_push_event(acd, N_ACD_EVENT_DOWN, NULL, NULL, NULL);
                 if (r)
                         return r;
@@ -1146,7 +1161,7 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
         return 0;
 
 error:
-        (void)n_acd_stop(acd);
+        n_acd_reset(acd);
         return r;
 }
 
@@ -1160,19 +1175,7 @@ error:
  * Return: 0 on success, negative error code on failure.
  */
 _public_ int n_acd_stop(NAcd *acd) {
-        acd->state = N_ACD_STATE_INIT;
-        acd->defend = N_ACD_DEFEND_NEVER;
-        acd->n_iteration = 0;
-        acd->last_defend = 0;
-        timerfd_settime(acd->fd_timer, 0, &(struct itimerspec){}, NULL);
-
-        if (acd->fd_socket >= 0) {
-                assert(acd->fd_epoll >= 0);
-                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_socket, NULL);
-                close(acd->fd_socket);
-                acd->fd_socket = -1;
-        }
-
+        n_acd_reset(acd);
         return 0;
 }
 
