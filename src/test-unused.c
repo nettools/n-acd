@@ -10,6 +10,7 @@
 static void test_unused(int ifindex, const uint8_t *mac, size_t n_mac) {
         NAcdConfig config = {
                 .ifindex = ifindex,
+                .transport = N_ACD_TRANSPORT_ETHERNET,
                 .mac = mac,
                 .n_mac = n_mac,
                 .ip = { htobe32((192 << 24) | (168 << 16) | (1 << 0)) },

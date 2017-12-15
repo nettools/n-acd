@@ -10,6 +10,7 @@
 static void test_unplug_down(int ifindex, uint8_t *mac, size_t n_mac, unsigned int run) {
         NAcdConfig config = {
                 .ifindex = ifindex,
+                .transport = N_ACD_TRANSPORT_ETHERNET,
                 .mac = mac,
                 .n_mac = n_mac,
                 .ip = { htobe32((192 << 24) | (168 << 16) | (1 << 0)) },
