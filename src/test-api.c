@@ -34,11 +34,11 @@ static void test_api_management(void) {
 }
 
 static void test_api_runtime(void) {
-        uint8_t mac[6] = { 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54 };
         NAcdConfig config = {
                 .ifindex = 1,
-                .mac = mac,
-                .n_mac = sizeof(mac),
+                .transport = N_ACD_TRANSPORT_ETHERNET,
+                .mac = (uint8_t[]){ 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54 },
+                .n_mac = ETH_ALEN,
                 .ip = { htobe32((127 << 24) | (1 << 0)) },
                 .timeout_msec = 100,
         };
