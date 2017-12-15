@@ -759,6 +759,12 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
                  *
                  * Note that we must use recv(2) over read(2), since the latter cannot
                  * deal with empty packets properly.
+                 *
+                 * We explicitly skip passing MSG_TRUNC here. We *WANT*
+                 * overlong packets to be retrieved and truncated. Ethernet
+                 * frames might not have byte-granular lengths. Real hardware
+                 * does add trailing padding/garbage, so we must discard this
+                 * here.
                  */
                 l = recv(acd->fd_socket, &packet, sizeof(packet), 0);
                 if (l == (ssize_t)sizeof(packet)) {
@@ -953,7 +959,7 @@ static int n_acd_bind_socket(NAcd *acd, int s) {
                  * wire type, protocol type, and address lengths are correct.
                  */
                 BPF_STMT(BPF_LD + BPF_W + BPF_LEN, 0),                                                          /* A <- packet length */
-                BPF_JUMP(BPF_JMP + BPF_JGE + BPF_K, sizeof(struct ether_arp), 1, 0),                            /* packet == arp packet ? */
+                BPF_JUMP(BPF_JMP + BPF_JGE + BPF_K, sizeof(struct ether_arp), 1, 0),                            /* #packet >= #arp-packet ? */
                 BPF_STMT(BPF_RET + BPF_K, 0),                                                                   /* ignore */
                 BPF_STMT(BPF_LD + BPF_H + BPF_ABS, offsetof(struct ether_arp, ea_hdr.ar_hrd)),                  /* A <- header */
                 BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, ARPHRD_ETHER, 1, 0),                                        /* header == ethernet ? */
