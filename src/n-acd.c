@@ -1130,6 +1130,8 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
 
         if (acd->timeout_multiplier) {
                 delay = 0;
+                acd->n_iteration = 0;
+
                 if (acd->last_conflict != TIME_INFINITY) {
                         r = n_acd_now(&now);
                         if (r < 0)
@@ -1156,7 +1158,6 @@ _public_ int n_acd_start(NAcd *acd, NAcdConfig *config) {
 
         acd->state = N_ACD_STATE_PROBING;
         acd->defend = N_ACD_DEFEND_NEVER;
-        acd->n_iteration = 0;
         acd->last_defend = 0;
         return 0;
 
