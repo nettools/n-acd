@@ -5,7 +5,10 @@
 #
 
 libnacd_private = static_library('nacd-private',
-                                 ['n-acd.c'],
+                                 [
+                                        'n-acd.c',
+                                        'bpf-filter.c',
+                                 ],
                                  c_args: [
                                         '-fvisibility=hidden',
                                         '-fno-common'
@@ -74,3 +77,8 @@ test_unused = executable('test-unsed',
                          ['test-unused.c'],
                          link_with: libnacd_private)
 test('Unconflicted ACD', test_unused)
+
+test_bpf = executable('test-bpf',
+                      ['test-bpf.c'],
+                      link_with: libnacd_private)
+test('eBPF socket filtering', test_bpf)
