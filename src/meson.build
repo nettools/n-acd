@@ -7,6 +7,7 @@
 libnacd_private = static_library('nacd-private',
                                  [
                                         'n-acd.c',
+                                        'n-acd-probe.c',
                                         'bpf-filter.c',
                                  ],
                                  c_args: [
@@ -16,12 +17,13 @@ libnacd_private = static_library('nacd-private',
                                  dependencies: [
                                         dep_clist,
                                         dep_csiphash,
+                                        dep_crbtree,
                                  ],
                                  pic: true)
 install_headers('n-acd.h')
 libnacd_symfile = join_paths(meson.current_source_dir(), 'libnacd.sym')
 libnacd_shared = shared_library('nacd',
-                                dependencies: dep_csiphash,
+                                dependencies: [ dep_csiphash, dep_crbtree ],
                                 objects: libnacd_private.extract_all_objects(),
                                 install: true,
                                 soversion: 0,
@@ -53,30 +55,30 @@ test('API Symbol Visibility', test_api)
 # they can access internals for verification.
 #
 
-test_basic = executable('test-basic',
-                        ['test-basic.c'],
-                        link_with: libnacd_private)
-test('Basic API Behavior', test_basic)
-
-test_loopback = executable('test-loopback',
-                           ['test-loopback.c'],
-                           link_with: libnacd_private)
-test('Echo Suppression via Loopback', test_loopback)
-
-test_twice = executable('test-twice',
-                        ['test-twice.c'],
-                        link_with: libnacd_private)
-test('Two ACD in Parallel', test_twice)
-
-test_unplug = executable('test-unplug',
-                         ['test-unplug.c'],
-                         link_with: libnacd_private)
-test('Async Interface Hotplug', test_unplug)
-
-test_unused = executable('test-unsed',
-                         ['test-unused.c'],
-                         link_with: libnacd_private)
-test('Unconflicted ACD', test_unused)
+#test_basic = executable('test-basic',
+#                        ['test-basic.c'],
+#                        link_with: libnacd_private)
+#test('Basic API Behavior', test_basic)
+#
+#test_loopback = executable('test-loopback',
+#                           ['test-loopback.c'],
+#                           link_with: libnacd_private)
+#test('Echo Suppression via Loopback', test_loopback)
+#
+#test_twice = executable('test-twice',
+#                        ['test-twice.c'],
+#                        link_with: libnacd_private)
+#test('Two ACD in Parallel', test_twice)
+#
+#test_unplug = executable('test-unplug',
+#                         ['test-unplug.c'],
+#                         link_with: libnacd_private)
+#test('Async Interface Hotplug', test_unplug)
+#
+#test_unused = executable('test-unsed',
+#                         ['test-unused.c'],
+#                         link_with: libnacd_private)
+#test('Unconflicted ACD', test_unused)
 
 test_bpf = executable('test-bpf',
                       ['test-bpf.c'],
