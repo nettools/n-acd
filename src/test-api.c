@@ -83,6 +83,12 @@ static void test_api(void) {
 }
 
 int main(int argc, char **argv) {
+        int r;
+
+        r = test_setup();
+        if (r)
+                return r;
+
         test_api();
         return 0;
 }
