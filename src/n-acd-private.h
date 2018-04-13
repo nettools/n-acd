@@ -69,6 +69,11 @@ struct NAcd {
         CRBTree timeout_tree;
         CList event_list;
 
+        /* BPF map */
+        int fd_bpf_map;
+        size_t n_bpf_map;
+        size_t max_bpf_map;
+
         /* configuration */
         int ifindex;
         uint8_t mac[ETH_ALEN];
@@ -89,6 +94,7 @@ struct NAcd {
                 .ip_tree = C_RBTREE_INIT,                                       \
                 .timeout_tree = C_RBTREE_INIT,                                  \
                 .event_list = C_LIST_INIT((_x).event_list),                     \
+                .fd_bpf_map = -1,                                               \
         }
 
 struct NAcdProbe {
@@ -129,6 +135,7 @@ void n_acd_schedule(NAcd *acd);
 void n_acd_remember(NAcd *acd, uint64_t now, bool success);
 int n_acd_raise(NAcd *acd, NAcdEventNode **nodep, unsigned int event);
 int n_acd_send(NAcd *acd, const struct in_addr *tpa, const struct in_addr *spa);
+int n_acd_ensure_bpf_map_space(NAcd *acd);
 
 /* probes */
 
@@ -153,4 +160,9 @@ static inline int n_acd_errno(void) {
 static inline void n_acd_event_node_freep(NAcdEventNode **node) {
         if (*node)
                 n_acd_event_node_free(*node);
+}
+
+static inline void n_acd_closep(int *fdp) {
+        if (*fdp >= 0)
+                close(*fdp);
 }

@@ -19,6 +19,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include "bpf-filter.h"
 #include "n-acd.h"
 #include "n-acd-private.h"
 
@@ -162,11 +163,37 @@ static void n_acd_probe_schedule(NAcdProbe *probe, uint64_t u_timeout, unsigned 
         n_acd_schedule(probe->acd);
 }
 
+static bool n_acd_probe_is_unique(NAcdProbe *probe) {
+        NAcdProbe *sibling;
+
+        if (!c_rbnode_is_linked(&probe->ip_node))
+                return false;
+
+        sibling = c_rbnode_entry(c_rbnode_next(&probe->ip_node), NAcdProbe, ip_node);
+        if (sibling && sibling->ip.s_addr == probe->ip.s_addr)
+                return false;
+
+        sibling = c_rbnode_entry(c_rbnode_prev(&probe->ip_node), NAcdProbe, ip_node);
+        if (sibling && sibling->ip.s_addr == probe->ip.s_addr)
+                return false;
+
+        return true;
+}
+
 int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
         _cleanup_(n_acd_probe_freep) NAcdProbe *probe = NULL;
+        int r;
 
         if (!config->ip.s_addr)
                 return N_ACD_E_INVALID_ARGUMENT;
+
+        /*
+         * Make sure the kernel bpf map has space for at least one more
+         * entry.
+        */
+        r = n_acd_ensure_bpf_map_space(acd);
+        if (r)
+                return r;
 
         probe = malloc(sizeof(*probe));
         if (!probe)
@@ -223,6 +250,22 @@ int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
         }
 
         /*
+         * Add the ip address to the map, if it is not already there.
+         */
+        if (n_acd_probe_is_unique(probe)) {
+                r = n_acd_bpf_map_add(acd->fd_bpf_map, &probe->ip);
+                if (r) {
+                        /*
+                         * Make sure the IP address is linked in userspace iff
+                         * it is linked in the kernel.
+                         */
+                        c_rbnode_unlink(&probe->ip_node);
+                        return r;
+                }
+                ++acd->n_bpf_map;
+        }
+
+        /*
          * Now that everything is set up, we have to send the first probe. This
          * is done after ~PROBE_WAIT seconds, hence we schedule our timer.
          * In case no timeout-multiplier is set, we pretend we already sent all
@@ -250,9 +293,20 @@ int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
  */
 _public_ NAcdProbe *n_acd_probe_free(NAcdProbe *probe) {
         NAcdEventNode *node, *t_node;
+        int r;
 
         if (!probe)
                 return NULL;
+
+        /*
+         * If this is the only probe for a given IP, remove the IP from the
+         * kernel BPF map.
+         */
+        if (n_acd_probe_is_unique(probe)) {
+                r = n_acd_bpf_map_remove(probe->acd->fd_bpf_map, &probe->ip);
+                assert(r >= 0);
+                --probe->acd->n_bpf_map;
+        }
 
         c_list_for_each_entry_safe(node, t_node, &probe->event_list, probe_link)
                 n_acd_event_node_free(node);

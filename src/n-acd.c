@@ -24,6 +24,7 @@
 #include <sys/timerfd.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include "bpf-filter.h"
 #include "n-acd.h"
 #include "n-acd-private.h"
 
@@ -68,95 +69,7 @@ static int n_acd_get_random(unsigned int *random) {
         return 0;
 }
 
-static int n_acd_socket_attach_filter(int s, NAcdConfig *config) {
-        /*
-         * Due to strict aliasing, we cannot get uint32_t/uint16_t pointers to
-         * acd->config.mac, so provide a union accessor.
-         */
-        const union {
-                uint8_t u8[6];
-                uint16_t u16[3];
-                uint32_t u32[1];
-        } mac = {
-                .u8 = {
-                        config->mac[0],
-                        config->mac[1],
-                        config->mac[2],
-                        config->mac[3],
-                        config->mac[4],
-                        config->mac[5],
-                },
-        };
-        struct sock_filter filter[] = {
-                /*
-                 * Basic ARP header validation. Make sure the packet-length,
-                 * wire type, protocol type, and address lengths are correct.
-                 */
-                BPF_STMT(BPF_LD + BPF_W + BPF_LEN, 0),                                                          /* A <- packet length */
-                BPF_JUMP(BPF_JMP + BPF_JGE + BPF_K, sizeof(struct ether_arp), 1, 0),                            /* #packet >= #arp-packet ? */
-                BPF_STMT(BPF_RET + BPF_K, 0),                                                                   /* ignore */
-                BPF_STMT(BPF_LD + BPF_H + BPF_ABS, offsetof(struct ether_arp, ea_hdr.ar_hrd)),                  /* A <- header */
-                BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, ARPHRD_ETHER, 1, 0),                                        /* header == ethernet ? */
-                BPF_STMT(BPF_RET + BPF_K, 0),                                                                   /* ignore */
-                BPF_STMT(BPF_LD + BPF_H + BPF_ABS, offsetof(struct ether_arp, ea_hdr.ar_pro)),                  /* A <- protocol */
-                BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, ETHERTYPE_IP, 1, 0),                                        /* protocol == IP ? */
-                BPF_STMT(BPF_RET + BPF_K, 0),                                                                   /* ignore */
-                BPF_STMT(BPF_LD + BPF_B + BPF_ABS, offsetof(struct ether_arp, ea_hdr.ar_hln)),                  /* A <- hardware address length */
-                BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, sizeof(struct ether_addr), 1, 0),                           /* length == sizeof(ether_addr)? */
-                BPF_STMT(BPF_RET + BPF_K, 0),                                                                   /* ignore */
-                BPF_STMT(BPF_LD + BPF_B + BPF_ABS, offsetof(struct ether_arp, ea_hdr.ar_pln)),                  /* A <- protocol address length */
-                BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, sizeof(struct in_addr), 1, 0),                              /* length == sizeof(in_addr) ? */
-                BPF_STMT(BPF_RET + BPF_K, 0),                                                                   /* ignore */
-                BPF_STMT(BPF_LD + BPF_H + BPF_ABS, offsetof(struct ether_arp, ea_hdr.ar_op)),                   /* A <- operation */
-                BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, ARPOP_REQUEST, 2, 0),                                       /* protocol == request ? */
-                BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, ARPOP_REPLY, 1, 0),                                         /* protocol == reply ? */
-                BPF_STMT(BPF_RET + BPF_K, 0),                                                                   /* ignore */
-
-                /*
-                 * Sender hardware address must be different from ours. Note
-                 * that BPF runs in big-endian mode, but assumes immediates are
-                 * given in native-endian. This might look weird on 6-byte mac
-                 * addresses, but is needed to revert the BPF magic.
-                 */
-                BPF_STMT(BPF_LD + BPF_IMM, be32toh(mac.u32[0])),                                                /* A <- 4 bytes of client's MAC */
-                BPF_STMT(BPF_MISC + BPF_TAX, 0),                                                                /* X <- A */
-                BPF_STMT(BPF_LD + BPF_W + BPF_ABS, offsetof(struct ether_arp, arp_sha)),                        /* A <- 4 bytes of SHA */
-                BPF_STMT(BPF_ALU + BPF_XOR + BPF_X, 0),                                                         /* A xor X */
-                BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, 0, 0, 6),                                                   /* A == 0 ? */
-                BPF_STMT(BPF_LD + BPF_IMM, be16toh(mac.u16[2])),                                                /* A <- remainder of client's MAC */
-                BPF_STMT(BPF_MISC + BPF_TAX, 0),                                                                /* X <- A */
-                BPF_STMT(BPF_LD + BPF_H + BPF_ABS, offsetof(struct ether_arp, arp_sha) + 4),                    /* A <- remainder of SHA */
-                BPF_STMT(BPF_ALU + BPF_XOR + BPF_X, 0),                                                         /* A xor X */
-                BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, 0, 0, 1),                                                   /* A == 0 ? */
-                BPF_STMT(BPF_RET + BPF_K, 0),                                                                   /* ignore */
-
-                /*
-                 * XXX: Here we should check that either sender or target
-                 *      address matches one of our active probes. Everything
-                 *      else should be ignored.
-                 *      This is not implemented for now, but is on the TODO
-                 *      list.
-                 */
-                BPF_STMT(BPF_RET + BPF_K, 65535),                                                               /* return all */
-        };
-        const struct sock_fprog fprog = {
-                .len = sizeof(filter) / sizeof(*filter),
-                .filter = filter,
-        };
-        int r;
-
-        /*
-         * Install a packet filter that matches on the ARP header and
-         * addresses, to reduce the number of wake-ups to a minimum.
-         */
-        r = setsockopt(s, SOL_SOCKET, SO_ATTACH_FILTER, &fprog, sizeof(fprog));
-        if (r < 0)
-                return -n_acd_errno();
-
-        return 0;
-}
-
-static int n_acd_socket_new(int *fdp, NAcdConfig *config) {
+static int n_acd_socket_new(int *fdp, int fd_bpf_prog, NAcdConfig *config) {
         const struct sockaddr_ll address = {
                 .sll_family = AF_PACKET,
                 .sll_protocol = htobe16(ETH_P_ARP),
@@ -172,9 +85,9 @@ static int n_acd_socket_new(int *fdp, NAcdConfig *config) {
                 goto error;
         }
 
-        r = n_acd_socket_attach_filter(s, config);
-        if (r)
-                goto error;
+        r = setsockopt(s, SOL_SOCKET, SO_ATTACH_BPF, &fd_bpf_prog, sizeof(fd_bpf_prog));
+        if (r < 0)
+                return -n_acd_errno();
 
         r = bind(s, (struct sockaddr *)&address, sizeof(address));
         if (r < 0) {
@@ -267,6 +180,42 @@ NAcdEventNode *n_acd_event_node_free(NAcdEventNode *node) {
         return NULL;
 }
 
+int n_acd_ensure_bpf_map_space(NAcd *acd) {
+        NAcdProbe *probe;
+        _cleanup_(n_acd_closep) int fd_map = -1, fd_prog = -1;
+        size_t  max_map;
+        int r;
+
+        if (acd->n_bpf_map < acd->max_bpf_map)
+                return 0;
+
+        max_map = 2 * acd->max_bpf_map;
+
+        r = n_acd_bpf_map_create(&fd_map, max_map);
+        if (r)
+                return r;
+
+        c_rbtree_for_each_entry(probe, &acd->ip_tree, ip_node) {
+                r = n_acd_bpf_map_add(fd_map, &probe->ip);
+                if (r)
+                        return r;
+        }
+
+        r = n_acd_bpf_compile(&fd_prog, fd_map, (struct ether_addr*) acd->mac);
+        if (r)
+                return r;
+
+        r = setsockopt(acd->fd_socket, SOL_SOCKET, SO_ATTACH_BPF, &fd_prog, sizeof(fd_prog));
+        if (r)
+                return -n_acd_errno();
+
+        close(acd->fd_bpf_map);
+        acd->fd_bpf_map = fd_map;
+        fd_map = -1;
+        acd->max_bpf_map = max_map;
+        return 0;
+}
+
 /**
  * n_acd_new() - create a new ACD context
  * @acdp:       output argument for context
@@ -278,6 +227,7 @@ NAcdEventNode *n_acd_event_node_free(NAcdEventNode *node) {
  */
 _public_ int n_acd_new(NAcd **acdp, NAcdConfig *config) {
         _cleanup_(n_acd_unrefp) NAcd *acd = NULL;
+        _cleanup_(n_acd_closep) int fd_bpf_prog = -1;
         int r;
 
         if (config->ifindex <= 0 ||
@@ -306,7 +256,17 @@ _public_ int n_acd_new(NAcd **acdp, NAcdConfig *config) {
         if (acd->fd_timer < 0)
                 return -n_acd_errno();
 
-        r = n_acd_socket_new(&acd->fd_socket, config);
+        acd->max_bpf_map = 32;
+
+        r = n_acd_bpf_map_create(&acd->fd_bpf_map, acd->max_bpf_map);
+        if (r)
+                return r;
+
+        r = n_acd_bpf_compile(&fd_bpf_prog, acd->fd_bpf_map, (struct ether_addr*) acd->mac);
+        if (r)
+                return r;
+
+        r = n_acd_socket_new(&acd->fd_socket, fd_bpf_prog, config);
         if (r)
                 return r;
 
@@ -348,6 +308,11 @@ static void n_acd_free(NAcd *acd) {
                 epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_socket, NULL);
                 close(acd->fd_socket);
                 acd->fd_socket = -1;
+        }
+
+        if (acd->fd_bpf_map >= 0) {
+                close(acd->fd_bpf_map);
+                acd->fd_bpf_map = -1;
         }
 
         if (acd->fd_timer >= 0) {
