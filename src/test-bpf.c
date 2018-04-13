@@ -84,6 +84,7 @@ static void test_filter(void) {
         uint8_t buf[sizeof(struct ether_arp) + 1];
         struct ether_addr mac1 = { { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06 } };
         struct ether_addr mac2 = { { 0x01, 0x02, 0x03, 0x04, 0x05, 0x07 } };
+        struct in_addr ip0 = { 0 };
         struct in_addr ip1 = { 1 };
         struct in_addr ip2 = { 2 };
         struct ether_arp *packet = (struct ether_arp *)buf;
@@ -115,7 +116,7 @@ static void test_filter(void) {
         verify_success(packet, pair[0], pair[1]);
 
         /* valid: to us instead of from us */
-        *packet = (struct ether_arp)ETHER_ARP_PACKET_INIT(ARPOP_REQUEST, &mac2, &ip2, &ip1);
+        *packet = (struct ether_arp)ETHER_ARP_PACKET_INIT(ARPOP_REQUEST, &mac2, &ip0, &ip1);
         verify_success(packet, pair[0], pair[1]);
 
         /* invalid header type */
@@ -144,11 +145,19 @@ static void test_filter(void) {
         verify_failure(packet, pair[0], pair[1]);
 
         /* own mac */
-        *packet = (struct ether_arp)ETHER_ARP_PACKET_INIT(ARPOP_REPLY, &mac1, &ip1, &ip2);
+        *packet = (struct ether_arp)ETHER_ARP_PACKET_INIT(ARPOP_REQUEST, &mac1, &ip1, &ip2);
         verify_failure(packet, pair[0], pair[1]);
 
-        /* not to, nor from us */
-        *packet = (struct ether_arp)ETHER_ARP_PACKET_INIT(ARPOP_REPLY, &mac2, &ip2, &ip2);
+        /* not to, nor from us, with source */
+        *packet = (struct ether_arp)ETHER_ARP_PACKET_INIT(ARPOP_REQUEST, &mac2, &ip2, &ip2);
+        verify_failure(packet, pair[0], pair[1]);
+
+        /* not to, nor from us, without source */
+        *packet = (struct ether_arp)ETHER_ARP_PACKET_INIT(ARPOP_REQUEST, &mac2, &ip0, &ip2);
+        verify_failure(packet, pair[0], pair[1]);
+
+        /* to us instead of from us, but reply */
+        *packet = (struct ether_arp)ETHER_ARP_PACKET_INIT(ARPOP_REPLY, &mac2, &ip0, &ip1);
         verify_failure(packet, pair[0], pair[1]);
 
         /* long */

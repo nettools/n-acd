@@ -214,12 +214,6 @@ int n_acd_bpf_compile(int *progfdp, int mapfd, struct ether_addr *macp) {
                 BPF_MOV_IMM(0, 0),                                              /* r0 = 0 */
                 BPF_EXIT_INSN(),                                                /* return */
 
-                BPF_LD_ABS(BPF_H, offsetof(struct ether_arp, arp_op)),          /* r0 = operation */
-                BPF_JMP_IMM(BPF_JEQ, 0, ARPOP_REQUEST, 3),                      /* if (r0 == request) skip 5 */
-                BPF_JMP_IMM(BPF_JEQ, 0, ARPOP_REPLY, 2),                        /* if (r0 == reply) skip 2 */
-                BPF_MOV_IMM(0, 0),                                              /* r0 = 0 */
-                BPF_EXIT_INSN(),                                                /* return */
-
                 /* drop packets from our own mac address */
                 BPF_LD_ABS(BPF_W, offsetof(struct ether_arp, arp_sha)),         /* r0 = first four bytes of packet mac address */
                 BPF_JMP_IMM(BPF_JNE, 0, be32toh(mac.u32[0]), 4),                /* if (r0 != first four bytes of our mac address) skip 4 */
@@ -228,30 +222,44 @@ int n_acd_bpf_compile(int *progfdp, int mapfd, struct ether_addr *macp) {
                 BPF_MOV_IMM(0, 0),                                              /* r0 = 0 */
                 BPF_EXIT_INSN(),                                                /* return */
 
-                /* forward packets from an IP we are listening for */
+                /*
+                 * We listen for two kinds of packets:
+                 *  Conflicts)
+                 *    These are requests or replies with the sender address not set to INADDR_ANY. The
+                 *    conflicted address is the sender address, remember this in r7.
+                 *  Probes)
+                 *    These are requests with the sender address set to INADDR_ANY. The probed address
+                 *    is the target address, remember this in r7.
+                 *  Any other packets are dropped.
+                 */
                 BPF_LD_ABS(BPF_W, offsetof(struct ether_arp, arp_spa)),         /* r0 = sender ip address */
-                BPF_STX_MEM(BPF_W, 10, 0, -4),                                  /* *(uint32_t*)fp - 4 = r0 */
-                BPF_MOV_REG(2, 10),                                             /* r2 = fp */
-                BPF_ALU_IMM(BPF_ADD, 2, -4),                                    /* r2 -= 4 */
-                BPF_LD_MAP_FD(1, mapfd),                                        /* r1 = mapfd */
-                BPF_EMIT_CALL(BPF_FUNC_map_lookup_elem),                        /* r0 = map_lookup_elem(r1, r2) */
-                BPF_JMP_IMM(BPF_JEQ, 0, 0, 2),                                  /* if (r0 == NULL) skip 2 */
-                BPF_MOV_IMM(0, sizeof(struct ether_arp)),                       /* r0 = sizeof(struct ether_arp) */
-                BPF_EXIT_INSN(),                                                /* return */
-
-                /* forward packets to an IP we are listening for */
-                BPF_LD_ABS(BPF_W, offsetof(struct ether_arp, arp_tpa)),         /* r0 = target ip address */
-                BPF_STX_MEM(BPF_W, 10, 0, -4),                                  /* *(uint32_t*)fp - 4 = r0 */
-                BPF_MOV_REG(2, 10),                                             /* r2 = fp */
-                BPF_ALU_IMM(BPF_ADD, 2, -4),                                    /* r2 -= 4 */
-                BPF_LD_MAP_FD(1, mapfd),                                        /* r1 = mapfd */
-                BPF_EMIT_CALL(BPF_FUNC_map_lookup_elem),                        /* r0 = map_lookup_elem(r1, r2) */
-                BPF_JMP_IMM(BPF_JEQ, 0, 0, 2),                                  /* if (r0 == NULL) skip 2 */
-                BPF_MOV_IMM(0, sizeof(struct ether_arp)),                       /* r0 = sizeof(struct ether_arp) */
-                BPF_EXIT_INSN(),                                                /* return */
-
-                /* drop packet */
+                BPF_JMP_IMM(BPF_JEQ, 0, 0, 7),                                  /* if (r0 == 0) skip 7 */
+                BPF_MOV_REG(7, 0),                                              /* r7 = r0 */
+                BPF_LD_ABS(BPF_H, offsetof(struct ether_arp, arp_op)),          /* r0 = operation */
+                BPF_JMP_IMM(BPF_JEQ, 0, ARPOP_REQUEST, 3),                      /* if (r0 == request) skip 3 */
+                BPF_JMP_IMM(BPF_JEQ, 0, ARPOP_REPLY, 2),                        /* if (r0 == reply) skip 2 */
                 BPF_MOV_IMM(0, 0),                                              /* r0 = 0 */
+                BPF_EXIT_INSN(),                                                /* return */
+                BPF_JMP_IMM(BPF_JA, 0, 0, 6),                                   /* skip 6 */
+                BPF_LD_ABS(BPF_W, offsetof(struct ether_arp, arp_tpa)),         /* r0 = target ip address */
+                BPF_MOV_REG(7, 0),                                              /* r7 = r0 */
+                BPF_LD_ABS(BPF_H, offsetof(struct ether_arp, arp_op)),          /* r0 = operation */
+                BPF_JMP_IMM(BPF_JEQ, 0, ARPOP_REQUEST, 2),                      /* if (r0 == request) skip 2 */
+                BPF_MOV_IMM(0, 0),                                              /* r0 = 0 */
+                BPF_EXIT_INSN(),                                                /* return */
+
+                /* check if the probe or conflict is for an address we are monitoring */
+                BPF_STX_MEM(BPF_W, 10, 7, -4),                                  /* *(uint32_t*)fp - 4 = r7 */
+                BPF_MOV_REG(2, 10),                                             /* r2 = fp */
+                BPF_ALU_IMM(BPF_ADD, 2, -4),                                    /* r2 -= 4 */
+                BPF_LD_MAP_FD(1, mapfd),                                        /* r1 = mapfd */
+                BPF_EMIT_CALL(BPF_FUNC_map_lookup_elem),                        /* r0 = map_lookup_elem(r1, r2) */
+                BPF_JMP_IMM(BPF_JNE, 0, 0, 2),                                  /* if (r0 != NULL) skip 2 */
+                BPF_MOV_IMM(0, 0),                                              /* r0 = 0 */
+                BPF_EXIT_INSN(),                                                /* return */
+
+                /* return exactly the packet length*/
+                BPF_MOV_IMM(0, sizeof(struct ether_arp)),                       /* r0 = sizeof(struct ether_arp) */
                 BPF_EXIT_INSN(),                                                /* return */
         };
         union bpf_attr attr = {
