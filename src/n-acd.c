@@ -255,7 +255,7 @@ _public_ int n_acd_new(NAcd **acdp, NAcdConfig *config) {
         if (acd->fd_timer < 0)
                 return -n_acd_errno();
 
-        acd->max_bpf_map = 32;
+        acd->max_bpf_map = 8;
 
         r = n_acd_bpf_map_create(&acd->fd_bpf_map, acd->max_bpf_map);
         if (r)
