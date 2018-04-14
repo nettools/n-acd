@@ -1,3 +1,16 @@
+/* eBPF filter for IPv4 Address Conflict Detection
+ *
+ * An eBPF map and an eBPF program are provided. The map contains all the
+ * addresses address conflict detection are performed on, and the program
+ * filters out all packets except exactly the packets relevant to the ACD
+ * protocol on the addresses currently in the map.
+ *
+ * Note that userspace still has to filter the incoming packets, as filter
+ * happens when packets are queued on the socket, not when userspace calls
+ * receive. It is therefore possible to receive packets about addresses
+ * that have already been removed.
+ */
+
 #include <errno.h>
 #include <inttypes.h>
 #include <linux/bpf.h>
@@ -8,7 +21,7 @@
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-#include "bpf-filter.h"
+#include "n-acd-private.h"
 
 #define BPF_LD_ABS(SIZE, IMM)					\
 	((struct bpf_insn) {					\

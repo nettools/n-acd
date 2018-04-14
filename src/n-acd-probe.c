@@ -19,7 +19,6 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "bpf-filter.h"
 #include "n-acd.h"
 #include "n-acd-private.h"
 

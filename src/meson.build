@@ -7,8 +7,8 @@
 libnacd_private = static_library('nacd-private',
                                  [
                                         'n-acd.c',
+                                        'n-acd-bpf.c',
                                         'n-acd-probe.c',
-                                        'bpf-filter.c',
                                  ],
                                  c_args: [
                                         '-fvisibility=hidden',
