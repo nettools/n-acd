@@ -75,9 +75,7 @@ int main(int argc, char **argv) {
         if (r)
                 return r;
 
-        r = system("ip link set lo up");
-        assert(r == 0);
-        test_if_query("lo", &ifindex, &mac);
+        test_loopback_up(&ifindex, &mac);
         test_loopback(ifindex, mac.ether_addr_octet, sizeof(mac.ether_addr_octet));
 
         return 0;

@@ -84,6 +84,15 @@ static inline void test_veth_new(int *parent_indexp,
         test_if_query("veth1", child_indexp, child_macp);
 }
 
+static inline void test_loopback_up(int *indexp, struct ether_addr *macp) {
+        int r;
+
+        r = system("ip link set lo up");
+        assert(r == 0);
+
+        test_if_query("lo", indexp, macp);
+}
+
 static inline int test_setup(void) {
         int r;
 
