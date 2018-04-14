@@ -55,16 +55,11 @@ test('API Symbol Visibility', test_api)
 # they can access internals for verification.
 #
 
-#test_basic = executable('test-basic',
-#                        ['test-basic.c'],
-#                        link_with: libnacd_private)
-#test('Basic API Behavior', test_basic)
-#
-#test_loopback = executable('test-loopback',
-#                           ['test-loopback.c'],
-#                           link_with: libnacd_private)
-#test('Echo Suppression via Loopback', test_loopback)
-#
+test_loopback = executable('test-loopback',
+                           ['test-loopback.c'],
+                           link_with: libnacd_private)
+test('Echo Suppression via Loopback', test_loopback)
+
 #test_twice = executable('test-twice',
 #                        ['test-twice.c'],
 #                        link_with: libnacd_private)
