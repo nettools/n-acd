@@ -106,6 +106,7 @@ struct NAcdProbe {
         /* configuration */
         struct in_addr ip;
         uint64_t timeout_multiplier;
+        void *userdata;
 
         /* state */
         unsigned int state;

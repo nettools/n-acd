@@ -63,9 +63,16 @@ static void test_api(void) {
 
                         {
                                 NAcdProbe *probe = NULL;
+                                void *userdata;
 
                                 r = n_acd_probe(acd, &probe, c);
                                 assert(!r);
+
+                                n_acd_probe_get_userdata(probe, &userdata);
+                                assert(userdata == NULL);
+                                n_acd_probe_set_userdata(probe, acd);
+                                n_acd_probe_get_userdata(probe, &userdata);
+                                assert(userdata == acd);
 
                                 r = n_acd_probe_announce(probe, N_ACD_DEFEND_ONCE);
                                 assert(!r);

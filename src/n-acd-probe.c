@@ -593,6 +593,20 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
 }
 
 /**
+ * n_acd_probe_set_userdata - XXX
+ */
+_public_ void n_acd_probe_set_userdata(NAcdProbe *probe, void *userdata) {
+        probe->userdata = userdata;
+}
+
+/**
+ * n_acd_probe_get_userdata - XXX
+ */
+_public_ void n_acd_probe_get_userdata(NAcdProbe *probe, void **userdatap) {
+        *userdatap = probe->userdata;
+}
+
+/**
  * n_acd_probe_announce() - announce the configured IP address
  * @probe:      probe object
  * @defend:     defence policy

@@ -9,7 +9,6 @@
  *
  * XXX:
  *  - turn ms to ns (and also us to ns)
- *  - userdata
  *  - make DEFEND a true integer input
  */
 
@@ -105,6 +104,9 @@ int n_acd_probe(NAcd *acd, NAcdProbe **probep, NAcdProbeConfig *config);
 /* probes */
 
 NAcdProbe *n_acd_probe_free(NAcdProbe *probe);
+
+void n_acd_probe_set_userdata(NAcdProbe *probe, void *userdata);
+void n_acd_probe_get_userdata(NAcdProbe *probe, void **userdatap);
 
 int n_acd_probe_announce(NAcdProbe *probe, unsigned int defend);
 

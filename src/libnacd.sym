@@ -20,6 +20,8 @@ global:
         n_acd_probe;
 
         n_acd_probe_free;
+        n_acd_probe_set_userdata;
+        n_acd_probe_get_userdata;
         n_acd_probe_announce;
 local:
        *;
