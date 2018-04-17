@@ -60,20 +60,15 @@ test_loopback = executable('test-loopback',
                            link_with: libnacd_private)
 test('Echo Suppression via Loopback', test_loopback)
 
-#test_twice = executable('test-twice',
-#                        ['test-twice.c'],
-#                        link_with: libnacd_private)
-#test('Two ACD in Parallel', test_twice)
-#
+test_veth = executable('test-veth',
+                       ['test-veth.c'],
+                       link_with: libnacd_private)
+test('Parallel ACD instances', test_veth)
+
 #test_unplug = executable('test-unplug',
 #                         ['test-unplug.c'],
 #                         link_with: libnacd_private)
 #test('Async Interface Hotplug', test_unplug)
-#
-#test_unused = executable('test-unsed',
-#                         ['test-unused.c'],
-#                         link_with: libnacd_private)
-#test('Unconflicted ACD', test_unused)
 
 test_bpf = executable('test-bpf',
                       ['test-bpf.c'],
