@@ -652,18 +652,16 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
 static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
         const size_t n_batch = 8;
         struct mmsghdr msgs[n_batch];
+        struct iovec iovecs[n_batch];
         struct ether_arp data[n_batch];
         size_t i;
         int r, n;
 
         for (i = 0; i < n_batch; ++i) {
+                iovecs[i].iov_base = data + i;
+                iovecs[i].iov_len = sizeof(data[i]);
                 msgs[i].msg_hdr = (struct msghdr){
-                        .msg_iov = (struct iovec[]){
-                                {
-                                        .iov_base = data + i,
-                                        .iov_len = sizeof(data[i]),
-                                },
-                        },
+                        .msg_iov = iovecs + i,
                         .msg_iovlen = 1,
                 };
         }
