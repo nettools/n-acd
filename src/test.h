@@ -22,6 +22,26 @@
 #include <unistd.h>
 #include "n-acd.h"
 
+static inline void test_add_child_ip(struct in_addr *ip) {
+        struct sockaddr_in saddr = {
+                .sin_family = AF_INET,
+                .sin_addr = *ip,
+        };
+        struct ifreq ifr = {
+                .ifr_name = { 'v', 'e', 't', 'h', '1', 0 },
+                .ifr_addr = *(struct sockaddr *)&saddr,
+        };
+        int r, s;
+
+        s = socket(AF_INET, SOCK_DGRAM, 0);
+        assert(s >= 0);
+
+        r = ioctl(s, SIOCSIFADDR, &ifr);
+        assert(r >= 0);
+
+        close(s);
+}
+
 static inline void test_if_query(const char *name, int *indexp, struct ether_addr *macp) {
         struct ifreq ifr = {};
         size_t l;
