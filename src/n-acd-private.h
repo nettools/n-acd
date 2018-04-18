@@ -27,6 +27,7 @@ enum {
         N_ACD_PROBE_STATE_PROBING,
         N_ACD_PROBE_STATE_CONFIGURING,
         N_ACD_PROBE_STATE_ANNOUNCING,
+        N_ACD_PROBE_STATE_FAILED,
 };
 
 struct NAcdConfig {

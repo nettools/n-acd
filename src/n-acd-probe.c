@@ -162,6 +162,20 @@ static void n_acd_probe_schedule(NAcdProbe *probe, uint64_t u_timeout, unsigned 
         n_acd_schedule(probe->acd);
 }
 
+static void n_acd_probe_unschedule(NAcdProbe *probe) {
+        /*
+         * In case @probe was already scheduled with a timeout, remove
+         * it from the timeout-tree and reset the timeout.
+         */
+        c_rbnode_unlink(&probe->timeout_node);
+        probe->timeout = 0;
+
+        /*
+         * Update the timerfd, since we modified the timeout-tree.
+         */
+        n_acd_schedule(probe->acd);
+}
+
 static bool n_acd_probe_is_unique(NAcdProbe *probe) {
         NAcdProbe *sibling;
 
@@ -459,6 +473,7 @@ int n_acd_probe_handle_timeout(NAcdProbe *probe) {
                 break;
 
         case N_ACD_PROBE_STATE_CONFIGURING:
+        case N_ACD_PROBE_STATE_FAILED:
         default:
                 /*
                  * There are no timeouts in these states. If we trigger one,
@@ -496,6 +511,9 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                 node->event.used.n_sender = ETH_ALEN;
                 memcpy(node->sender, packet->arp_sha, ETH_ALEN);
 
+                n_acd_probe_unschedule(probe);
+                probe->state = N_ACD_PROBE_STATE_FAILED;
+
                 break;
 
         case N_ACD_PROBE_STATE_CONFIGURING:
@@ -509,6 +527,14 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                  * should be able to rely on never losing it after READY).
                  * Simply drop the event, and rely on the anticipated ANNOUNCE
                  * to trigger it again.
+                 */
+
+                break;
+
+        case N_ACD_PROBE_STATE_FAILED:
+                /*
+                 * We have already informed the caller that the address being
+                 * probed is in use, or that we have given up defending it.
                  */
 
                 break;
@@ -579,6 +605,9 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                         node->event.conflict.sender = node->sender;
                         node->event.conflict.n_sender = ETH_ALEN;
                         memcpy(node->sender, packet->arp_sha, ETH_ALEN);
+
+                        n_acd_probe_unschedule(probe);
+                        probe->state = N_ACD_PROBE_STATE_FAILED;
                 }
 
                 break;
