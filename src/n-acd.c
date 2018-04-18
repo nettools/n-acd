@@ -548,7 +548,10 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
                 memcpy(&addr, packet->arp_tpa, sizeof(addr));
                 hard_conflict = false;
         } else {
-                return 0;
+                /*
+                 * The BPF filter will not let through any other packet.
+                 */
+                return -EIO;
         }
 
         /* Find top-most node that matches @addr. */
