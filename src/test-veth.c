@@ -131,16 +131,12 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
                                         state1 = TEST_ACD_STATE_READY;
                                         n_acd_probe_set_userdata(event->ready.probe, (void*)state1);
 
-                                        fprintf(stderr, "READY 1\n");
-
                                         break;
                                 case N_ACD_EVENT_USED:
-                                        n_acd_probe_get_userdata(event->ready.probe, (void**)&state1);
+                                        n_acd_probe_get_userdata(event->used.probe, (void**)&state1);
                                         assert(state1 == TEST_ACD_STATE_UNKNOWN);
                                         state1 = TEST_ACD_STATE_USED;
-                                        n_acd_probe_set_userdata(event->ready.probe, (void*)state1);
-
-                                        fprintf(stderr, "USED 1\n");
+                                        n_acd_probe_set_userdata(event->used.probe, (void*)state1);
 
                                         break;
                                 default:
@@ -149,6 +145,9 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
 
                                 --n_running;
                         }
+
+                        r = n_acd_dispatch(acd2);
+                        assert(!r);
 
                         r = n_acd_pop_event(acd2, &event);
                         assert(!r);
@@ -160,16 +159,12 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
                                         state2 = TEST_ACD_STATE_READY;
                                         n_acd_probe_set_userdata(event->ready.probe, (void*)state2);
 
-                                        fprintf(stderr, "READY 2\n");
-
                                         break;
                                 case N_ACD_EVENT_USED:
-                                        n_acd_probe_get_userdata(event->ready.probe, (void**)&state2);
+                                        n_acd_probe_get_userdata(event->used.probe, (void**)&state2);
                                         assert(state2 == TEST_ACD_STATE_UNKNOWN);
                                         state2 = TEST_ACD_STATE_USED;
-                                        n_acd_probe_set_userdata(event->ready.probe, (void*)state2);
-
-                                        fprintf(stderr, "USED 2\n");
+                                        n_acd_probe_set_userdata(event->used.probe, (void*)state2);
 
                                         break;
                                 default:
