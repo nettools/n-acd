@@ -525,6 +525,7 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                 memcpy(node->sender, packet->arp_sha, ETH_ALEN);
 
                 n_acd_probe_unschedule(probe);
+                n_acd_probe_unlink(probe);
                 probe->state = N_ACD_PROBE_STATE_FAILED;
 
                 break;
@@ -540,14 +541,6 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                  * should be able to rely on never losing it after READY).
                  * Simply drop the event, and rely on the anticipated ANNOUNCE
                  * to trigger it again.
-                 */
-
-                break;
-
-        case N_ACD_PROBE_STATE_FAILED:
-                /*
-                 * We have already informed the caller that the address being
-                 * probed is in use, or that we have given up defending it.
                  */
 
                 break;
@@ -620,13 +613,19 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                         memcpy(node->sender, packet->arp_sha, ETH_ALEN);
 
                         n_acd_probe_unschedule(probe);
+                        n_acd_probe_unlink(probe);
                         probe->state = N_ACD_PROBE_STATE_FAILED;
                 }
 
                 break;
         }
 
+        case N_ACD_PROBE_STATE_FAILED:
         default:
+                /*
+                 * We are not listening for packets in these states. If we receive one,
+                 * something is fishy.
+                 */
                 assert(0);
                 return -EIO;
         }
