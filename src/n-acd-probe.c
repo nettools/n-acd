@@ -193,20 +193,81 @@ static bool n_acd_probe_is_unique(NAcdProbe *probe) {
         return true;
 }
 
+static int n_acd_probe_link(NAcdProbe *probe) {
+        int r;
+
+        /*
+         * Make sure the kernel bpf map has space for at least one more
+         * entry.
+        */
+        r = n_acd_ensure_bpf_map_space(probe->acd);
+        if (r)
+                return r;
+
+        /*
+         * Link entry into context, indexed by its IP. Note that we allow
+         * duplicates just fine. It is up to you to decide whether to avoid
+         * duplicates, if you don't want them. Duplicates on the same context
+         * do not conflict with each other, though.
+         */
+        {
+                CRBNode **slot, *parent;
+                NAcdProbe *other;
+
+                slot = &probe->acd->ip_tree.root;
+                parent = NULL;
+                while (*slot) {
+                        other = c_rbnode_entry(*slot, NAcdProbe, ip_node);
+                        parent = *slot;
+                        if (probe->ip.s_addr < other->ip.s_addr)
+                                slot = &(*slot)->left;
+                        else
+                                slot = &(*slot)->right;
+                }
+
+                c_rbtree_add(&probe->acd->ip_tree, parent, slot, &probe->ip_node);
+        }
+
+        /*
+         * Add the ip address to the map, if it is not already there.
+         */
+        if (n_acd_probe_is_unique(probe)) {
+                r = n_acd_bpf_map_add(probe->acd->fd_bpf_map, &probe->ip);
+                if (r) {
+                        /*
+                         * Make sure the IP address is linked in userspace iff
+                         * it is linked in the kernel.
+                         */
+                        c_rbnode_unlink(&probe->ip_node);
+                        return r;
+                }
+                ++probe->acd->n_bpf_map;
+        }
+
+        return 0;
+}
+
+static void n_acd_probe_unlink(NAcdProbe *probe) {
+        int r;
+
+        /*
+         * If this is the only probe for a given IP, remove the IP from the
+         * kernel BPF map.
+         */
+        if (n_acd_probe_is_unique(probe)) {
+                r = n_acd_bpf_map_remove(probe->acd->fd_bpf_map, &probe->ip);
+                assert(r >= 0);
+                --probe->acd->n_bpf_map;
+        }
+        c_rbnode_unlink(&probe->ip_node);
+}
+
 int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
         _cleanup_(n_acd_probe_freep) NAcdProbe *probe = NULL;
         int r;
 
         if (!config->ip.s_addr)
                 return N_ACD_E_INVALID_ARGUMENT;
-
-        /*
-         * Make sure the kernel bpf map has space for at least one more
-         * entry.
-        */
-        r = n_acd_ensure_bpf_map_space(acd);
-        if (r)
-                return r;
 
         probe = malloc(sizeof(*probe));
         if (!probe)
@@ -238,45 +299,9 @@ int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
          */
         probe->timeout_multiplier = config->timeout_msecs;
 
-        /*
-         * Link entry into context, indexed by its IP. Note that we allow
-         * duplicates just fine. It is up to you to decide whether to avoid
-         * duplicates, if you don't want them. Duplicates on the same context
-         * do not conflict with each other, though.
-         */
-        {
-                CRBNode **slot, *parent;
-                NAcdProbe *other;
-
-                slot = &acd->ip_tree.root;
-                parent = NULL;
-                while (*slot) {
-                        other = c_rbnode_entry(*slot, NAcdProbe, ip_node);
-                        parent = *slot;
-                        if (probe->ip.s_addr < other->ip.s_addr)
-                                slot = &(*slot)->left;
-                        else
-                                slot = &(*slot)->right;
-                }
-
-                c_rbtree_add(&acd->ip_tree, parent, slot, &probe->ip_node);
-        }
-
-        /*
-         * Add the ip address to the map, if it is not already there.
-         */
-        if (n_acd_probe_is_unique(probe)) {
-                r = n_acd_bpf_map_add(acd->fd_bpf_map, &probe->ip);
-                if (r) {
-                        /*
-                         * Make sure the IP address is linked in userspace iff
-                         * it is linked in the kernel.
-                         */
-                        c_rbnode_unlink(&probe->ip_node);
-                        return r;
-                }
-                ++acd->n_bpf_map;
-        }
+        r = n_acd_probe_link(probe);
+        if (r)
+                return r;
 
         /*
          * Now that everything is set up, we have to send the first probe. This
@@ -306,26 +331,15 @@ int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
  */
 _public_ NAcdProbe *n_acd_probe_free(NAcdProbe *probe) {
         NAcdEventNode *node, *t_node;
-        int r;
 
         if (!probe)
                 return NULL;
-
-        /*
-         * If this is the only probe for a given IP, remove the IP from the
-         * kernel BPF map.
-         */
-        if (n_acd_probe_is_unique(probe)) {
-                r = n_acd_bpf_map_remove(probe->acd->fd_bpf_map, &probe->ip);
-                assert(r >= 0);
-                --probe->acd->n_bpf_map;
-        }
 
         c_list_for_each_entry_safe(node, t_node, &probe->event_list, probe_link)
                 n_acd_event_node_free(node);
 
         n_acd_probe_unschedule(probe);
-        c_rbnode_unlink(&probe->ip_node);
+        n_acd_probe_unlink(probe);
         probe->acd = n_acd_unref(probe->acd);
         free(probe);
 
