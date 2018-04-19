@@ -324,8 +324,7 @@ _public_ NAcdProbe *n_acd_probe_free(NAcdProbe *probe) {
         c_list_for_each_entry_safe(node, t_node, &probe->event_list, probe_link)
                 n_acd_event_node_free(node);
 
-        c_rbnode_unlink(&probe->timeout_node);
-        n_acd_schedule(probe->acd);
+        n_acd_probe_unschedule(probe);
         c_rbnode_unlink(&probe->ip_node);
         probe->acd = n_acd_unref(probe->acd);
         free(probe);
