@@ -59,7 +59,7 @@ static inline void test_if_query(const char *name, int *indexp, struct ether_add
                 s = socket(AF_INET, SOCK_DGRAM, 0);
                 assert(s >= 0);
 
-                strncpy(ifr.ifr_name, name, l);
+                strncpy(ifr.ifr_name, name, l + 1);
                 r = ioctl(s, SIOCGIFHWADDR, &ifr);
                 assert(r >= 0);
 
