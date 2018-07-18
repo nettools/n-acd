@@ -51,8 +51,14 @@ static void test_map() {
         r = n_acd_bpf_map_add(mapfd, &addr);
         assert(r >= 0);
 
+        r = n_acd_bpf_map_add(mapfd, &addr);
+        assert(r == -EEXIST);
+
         r = n_acd_bpf_map_remove(mapfd, &addr);
         assert(r >= 0);
+
+        r = n_acd_bpf_map_remove(mapfd, &addr);
+        assert(r == -ENOENT);
 
         close(mapfd);
 }
@@ -172,6 +178,27 @@ static void test_filter(void) {
         *packet = (struct ether_arp)ETHER_ARP_PACKET_INIT(ARPOP_REQUEST, &mac2, &ip1, &ip2);
         r = send(pair[0], buf, sizeof(struct ether_arp) - 1, 0);
         assert(r == sizeof(struct ether_arp) - 1);
+
+        r = recv(pair[1], buf, sizeof(buf), 0);
+        assert(r < 0);
+        assert(errno == EAGAIN);
+
+        /*
+         * Send one packet before and one packet after modifying the map,
+         * verify that the modification applies at the time of send(), not recv().
+         */
+        *packet = (struct ether_arp)ETHER_ARP_PACKET_INIT(ARPOP_REQUEST, &mac2, &ip1, &ip2);
+        r = send(pair[0], buf, sizeof(struct ether_arp), 0);
+        assert(r == sizeof(struct ether_arp));
+
+        r = n_acd_bpf_map_remove(mapfd, &ip1);
+        assert(r >= 0);
+
+        r = send(pair[0], buf, sizeof(struct ether_arp), 0);
+        assert(r == sizeof(struct ether_arp));
+
+        r = recv(pair[1], buf, sizeof(buf), 0);
+        assert(r == sizeof(struct ether_arp));
 
         r = recv(pair[1], buf, sizeof(buf), 0);
         assert(r < 0);
