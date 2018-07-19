@@ -9,6 +9,7 @@ libnacd_private = static_library('nacd-private',
                                         'n-acd.c',
                                         'n-acd-bpf.c',
                                         'n-acd-probe.c',
+                                        'util/timer.c',
                                  ],
                                  c_args: [
                                         '-fvisibility=hidden',
@@ -75,3 +76,9 @@ test_bpf = executable('test-bpf',
                       ['test-bpf.c'],
                       link_with: libnacd_private)
 test('eBPF socket filtering', test_bpf)
+
+test_timer = executable('test-timer',
+                        ['util/test-timer.c'],
+                        link_with: libnacd_private,
+                        dependencies: [dep_crbtree])
+test('Timer helper', test_timer)
