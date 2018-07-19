@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <c-list.h>
+#include <c-macro.h>
 #include <c-rbtree.h>
 #include <c-siphash.h>
 #include <endian.h>

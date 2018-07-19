@@ -16,8 +16,9 @@ libnacd_private = static_library('nacd-private',
                                  ],
                                  dependencies: [
                                         dep_clist,
-                                        dep_csiphash,
                                         dep_crbtree,
+                                        dep_csiphash,
+                                        dep_csundry,
                                  ],
                                  pic: true)
 install_headers('n-acd.h')
