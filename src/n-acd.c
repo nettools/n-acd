@@ -252,9 +252,9 @@ _public_ int n_acd_new(NAcd **acdp, NAcdConfig *config) {
         if (acd->fd_epoll < 0)
                 return -n_acd_errno();
 
-        acd->fd_timer = timerfd_create(acd->clock, TFD_CLOEXEC | TFD_NONBLOCK);
-        if (acd->fd_timer < 0)
-                return -n_acd_errno();
+        r = timer_init(&acd->timer);
+        if (r < 0)
+                return r;
 
         acd->max_bpf_map = 8;
 
@@ -270,7 +270,7 @@ _public_ int n_acd_new(NAcd **acdp, NAcdConfig *config) {
         if (r)
                 return r;
 
-        r = epoll_ctl(acd->fd_epoll, EPOLL_CTL_ADD, acd->fd_timer,
+        r = epoll_ctl(acd->fd_epoll, EPOLL_CTL_ADD, acd->timer.fd,
                       &(struct epoll_event){
                               .events = EPOLLIN,
                               .data.u32 = N_ACD_EPOLL_TIMER,
@@ -300,7 +300,6 @@ static void n_acd_free(NAcd *acd) {
         c_list_for_each_entry_safe(node, t_node, &acd->event_list, acd_link)
                 n_acd_event_node_free(node);
 
-        assert(c_rbtree_is_empty(&acd->timeout_tree));
         assert(c_rbtree_is_empty(&acd->ip_tree));
 
         if (acd->fd_socket >= 0) {
@@ -315,11 +314,10 @@ static void n_acd_free(NAcd *acd) {
                 acd->fd_bpf_map = -1;
         }
 
-        if (acd->fd_timer >= 0) {
+        if (acd->timer.fd >= 0) {
                 assert(acd->fd_epoll >= 0);
-                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_timer, NULL);
-                close(acd->fd_timer);
-                acd->fd_timer = -1;
+                epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->timer.fd, NULL);
+                timer_deinit(&acd->timer);
         }
 
         if (acd->fd_epoll >= 0) {
@@ -346,43 +344,6 @@ _public_ NAcd *n_acd_unref(NAcd *acd) {
         if (acd && !--acd->n_refs)
                 n_acd_free(acd);
         return NULL;
-}
-
-void n_acd_now(NAcd *acd, uint64_t *nowp) {
-        struct timespec ts;
-        int r;
-
-        r = clock_gettime(acd->clock, &ts);
-        assert(r >= 0);
-
-        *nowp = ts.tv_sec * UINT64_C(1000000) + ts.tv_nsec / UINT64_C(1000);
-}
-
-void n_acd_schedule(NAcd *acd) {
-        uint64_t timeout, sec, nsec;
-        NAcdProbe *probe;
-        int r;
-
-        probe = c_rbnode_entry(c_rbtree_first(&acd->timeout_tree), NAcdProbe, timeout_node);
-        timeout = probe ? probe->timeout : 0;
-
-        if (timeout != acd->scheduled_timeout) {
-                sec = timeout / UINT64_C(1000000);
-                nsec = timeout % UINT64_C(1000000) * UINT64_C(1000);
-
-                r = timerfd_settime(acd->fd_timer,
-                                    TFD_TIMER_ABSTIME,
-                                    &(struct itimerspec){
-                                            .it_value = {
-                                                    .tv_sec = sec,
-                                                    .tv_nsec = nsec,
-                                            },
-                                    },
-                                    NULL);
-                assert(r >= 0);
-
-                acd->scheduled_timeout = timeout;
-        }
 }
 
 int n_acd_raise(NAcd *acd, NAcdEventNode **nodep, unsigned int event) {
@@ -487,23 +448,27 @@ _public_ void n_acd_get_fd(NAcd *acd, int *fdp) {
         *fdp = acd->fd_epoll;
 }
 
-static int n_acd_handle_timeout(NAcd *acd, uint64_t now) {
-        NAcdProbe *probe, *t_probe;
+static int n_acd_handle_timeout(NAcd *acd) {
+        NAcdProbe *probe;
+        uint64_t now;
         int r;
 
-        c_rbtree_for_each_entry_safe(probe, t_probe, &acd->timeout_tree, timeout_node) {
-                if (now < probe->timeout)
+        timer_now(&acd->timer, &now);
+
+        for (;;) {
+                Timeout *timeout;
+
+                r = timer_pop(&acd->timer, now, &timeout);
+                if (r < 0)
+                        return r;
+                else if (!timeout)
                         break;
 
-                probe->timeout = 0;
-                c_rbnode_unlink(&probe->timeout_node);
-
+                probe = c_container_of(timeout, NAcdProbe, timeout);
                 r = n_acd_probe_handle_timeout(probe);
                 if (r)
                         return r;
         }
-
-        n_acd_schedule(acd);
 
         return 0;
 }
@@ -598,7 +563,7 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
 }
 
 static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
-        uint64_t v, now;
+        uint64_t v;
         int r;
 
         if (event->events & (EPOLLHUP | EPOLLERR)) {
@@ -611,7 +576,7 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
         }
 
         if (event->events & EPOLLIN) {
-                r = read(acd->fd_timer, &v, sizeof(v));
+                r = read(acd->timer.fd, &v, sizeof(v));
                 if (r < 0) {
                         if (errno == EAGAIN) {
                                 /*
@@ -644,8 +609,7 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
                  * fired before that time, hence we are never preempted, nor
                  * can we live-lock.
                  */
-                n_acd_now(acd, &now);
-                r = n_acd_handle_timeout(acd, now);
+                r = n_acd_handle_timeout(acd);
                 if (r)
                         return r;
         }

@@ -113,10 +113,10 @@ _public_ void n_acd_probe_config_set_timeout(NAcdProbeConfig *config, uint64_t m
 }
 
 static void n_acd_probe_schedule(NAcdProbe *probe, uint64_t u_timeout, unsigned int u_jitter) {
-        uint64_t u_time;
+        uint64_t n_time;
 
-        n_acd_now(probe->acd, &u_time);
-        u_time += u_timeout;
+        timer_now(&probe->acd->timer, &n_time);
+        n_time += u_timeout * 1000;
 
         /*
          * ACD specifies jitter values to reduce packet storms on the local
@@ -125,55 +125,13 @@ static void n_acd_probe_schedule(NAcdProbe *probe, uint64_t u_timeout, unsigned 
          * pseudo-random jitter on top of the real timeout given as @u_timeout.
          */
         if (u_jitter)
-                u_time += rand_r(&probe->acd->seed) % u_jitter;
+                n_time += rand_r(&probe->acd->seed) % (u_jitter * 1000);
 
-        /*
-         * In case @probe was already scheduled with a timeout, remove it from
-         * the tree first, then update its timeout.
-         */
-        c_rbnode_unlink(&probe->timeout_node);
-        probe->timeout = u_time;
-
-        /*
-         * Now insert it back into the tree at the correct new position. We
-         * allow duplicates in the tree, so this insertion is open-coded.
-         */
-        {
-                NAcdProbe *other;
-                CRBNode **slot, *p;
-
-                slot = &probe->acd->timeout_tree.root;
-                p = NULL;
-                while (*slot) {
-                        other = c_rbnode_entry(*slot, NAcdProbe, timeout_node);
-                        p = *slot;
-                        if (probe->timeout < other->timeout)
-                                slot = &(*slot)->left;
-                        else
-                                slot = &(*slot)->right;
-                }
-
-                c_rbtree_add(&probe->acd->timeout_tree, p, slot, &probe->timeout_node);
-        }
-
-        /*
-         * Update the timerfd, since we modified the timeout-tree.
-         */
-        n_acd_schedule(probe->acd);
+        timeout_schedule(&probe->timeout, &probe->acd->timer, n_time);
 }
 
 static void n_acd_probe_unschedule(NAcdProbe *probe) {
-        /*
-         * In case @probe was already scheduled with a timeout, remove
-         * it from the timeout-tree and reset the timeout.
-         */
-        c_rbnode_unlink(&probe->timeout_node);
-        probe->timeout = 0;
-
-        /*
-         * Update the timerfd, since we modified the timeout-tree.
-         */
-        n_acd_schedule(probe->acd);
+        timeout_unschedule(&probe->timeout);
 }
 
 static bool n_acd_probe_is_unique(NAcdProbe *probe) {
@@ -504,7 +462,7 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
         uint64_t now;
         int r;
 
-        n_acd_now(probe->acd, &now);
+        timer_now(&probe->acd->timer, &now);
 
         switch (probe->state) {
         case N_ACD_PROBE_STATE_PROBING:
