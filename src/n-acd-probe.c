@@ -59,15 +59,15 @@
  * multiplier of 9000.
  */
 #define N_ACD_RFC_PROBE_NUM                     (3)
-#define N_ACD_RFC_PROBE_WAIT_USEC               (UINT64_C(111)) /* 111us */
-#define N_ACD_RFC_PROBE_MIN_USEC                (UINT64_C(111)) /* 111us */
-#define N_ACD_RFC_PROBE_MAX_USEC                (UINT64_C(333)) /* 333us */
+#define N_ACD_RFC_PROBE_WAIT_NSEC               (UINT64_C(111111)) /* 111us */
+#define N_ACD_RFC_PROBE_MIN_NSEC                (UINT64_C(111111)) /* 111us */
+#define N_ACD_RFC_PROBE_MAX_NSEC                (UINT64_C(333333)) /* 333us */
 #define N_ACD_RFC_ANNOUNCE_NUM                  (3)
-#define N_ACD_RFC_ANNOUNCE_WAIT_USEC            (UINT64_C(222)) /* 222us */
-#define N_ACD_RFC_ANNOUNCE_INTERVAL_USEC        (UINT64_C(222)) /* 222us */
+#define N_ACD_RFC_ANNOUNCE_WAIT_NSEC            (UINT64_C(222222)) /* 222us */
+#define N_ACD_RFC_ANNOUNCE_INTERVAL_NSEC        (UINT64_C(222222)) /* 222us */
 #define N_ACD_RFC_MAX_CONFLICTS                 (10)
-#define N_ACD_RFC_RATE_LIMIT_INTERVAL_USEC      (UINT64_C(60000000)) /* 60s */
-#define N_ACD_RFC_DEFEND_INTERVAL_USEC          (UINT64_C(10000000)) /* 10s */
+#define N_ACD_RFC_RATE_LIMIT_INTERVAL_NSEC      (UINT64_C(60000000000)) /* 60s */
+#define N_ACD_RFC_DEFEND_INTERVAL_NSEC          (UINT64_C(10000000000)) /* 10s */
 
 /**
  * XXX
@@ -112,20 +112,20 @@ _public_ void n_acd_probe_config_set_timeout(NAcdProbeConfig *config, uint64_t m
         config->timeout_msecs = msecs;
 }
 
-static void n_acd_probe_schedule(NAcdProbe *probe, uint64_t u_timeout, unsigned int u_jitter) {
+static void n_acd_probe_schedule(NAcdProbe *probe, uint64_t n_timeout, unsigned int n_jitter) {
         uint64_t n_time;
 
         timer_now(&probe->acd->timer, &n_time);
-        n_time += u_timeout * 1000;
+        n_time += n_timeout;
 
         /*
          * ACD specifies jitter values to reduce packet storms on the local
          * link. This call accepts the maximum relative jitter value in
-         * microseconds as @u_jitter. We then use rand_r(3p) to get a
-         * pseudo-random jitter on top of the real timeout given as @u_timeout.
+         * nanoseconds as @n_jitter. We then use rand_r(3p) to get a
+         * pseudo-random jitter on top of the real timeout given as @n_timeout.
          */
-        if (u_jitter)
-                n_time += rand_r(&probe->acd->seed) % (u_jitter * 1000);
+        if (n_jitter)
+                n_time += rand_r(&probe->acd->seed) % n_jitter;
 
         timeout_schedule(&probe->timeout, &probe->acd->timer, n_time);
 }
@@ -248,12 +248,12 @@ int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
          * Hence, the default value for this timeout is 9000, which just ends
          * up matching the spec-provided values.
          *
-         * What we now semantically do is divide this timeout by 1us/1000. This
-         * first turns it into microseconds, then strips the unit by turning it
-         * into a multiplier. However, rather than performing the division
-         * here, we multiplier all our timeouts by 1000 statically at compile
-         * time. Therefore, we can use the user-provided timeout as unmodified
-         * multiplier. No conversion necessary.
+         * What we now semantically do is divide this timeout by 1ns/1000000.
+         * This first turns it into microseconds, then strips the unit by
+         * turning it into a multiplier. However, rather than performing the
+         * division here, we multiplier all our timeouts by 1000000 statically
+         * at compile time. Therefore, we can use the user-provided timeout as
+         * unmodified multiplier. No conversion necessary.
          */
         probe->timeout_multiplier = config->timeout_msecs;
 
@@ -273,7 +273,7 @@ int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
                 probe->n_iteration = 0;
                 n_acd_probe_schedule(probe,
                                      0,
-                                     probe->timeout_multiplier * N_ACD_RFC_PROBE_WAIT_USEC);
+                                     probe->timeout_multiplier * N_ACD_RFC_PROBE_WAIT_NSEC);
         } else {
                 probe->n_iteration = N_ACD_RFC_PROBE_NUM;
                 n_acd_probe_schedule(probe, 0, 0);
@@ -380,11 +380,11 @@ int n_acd_probe_handle_timeout(NAcdProbe *probe) {
 
                         if (probe->n_iteration < N_ACD_RFC_PROBE_NUM)
                                 n_acd_probe_schedule(probe,
-                                                     probe->timeout_multiplier * N_ACD_RFC_PROBE_MIN_USEC,
-                                                     probe->timeout_multiplier * (N_ACD_RFC_PROBE_MAX_USEC - N_ACD_RFC_PROBE_MIN_USEC));
+                                                     probe->timeout_multiplier * N_ACD_RFC_PROBE_MIN_NSEC,
+                                                     probe->timeout_multiplier * (N_ACD_RFC_PROBE_MAX_NSEC - N_ACD_RFC_PROBE_MIN_NSEC));
                         else
                                 n_acd_probe_schedule(probe,
-                                                     probe->timeout_multiplier * N_ACD_RFC_ANNOUNCE_WAIT_USEC,
+                                                     probe->timeout_multiplier * N_ACD_RFC_ANNOUNCE_WAIT_NSEC,
                                                      0);
                 } else {
                         /*
@@ -437,7 +437,7 @@ int n_acd_probe_handle_timeout(NAcdProbe *probe) {
                          * might be 0 here.
                          */
                         n_acd_probe_schedule(probe,
-                                             N_ACD_TIMEOUT_RFC5227 * N_ACD_RFC_ANNOUNCE_INTERVAL_USEC,
+                                             N_ACD_TIMEOUT_RFC5227 * N_ACD_RFC_ANNOUNCE_INTERVAL_NSEC,
                                              0);
                 }
 
@@ -519,7 +519,7 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                 if (!hard_conflict)
                         break;
 
-                rate_limited = now < probe->last_defend + N_ACD_RFC_DEFEND_INTERVAL_USEC;
+                rate_limited = now < probe->last_defend + N_ACD_RFC_DEFEND_INTERVAL_NSEC;
 
                 switch (probe->defend) {
                 case N_ACD_DEFEND_NEVER:

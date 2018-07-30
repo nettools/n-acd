@@ -8,7 +8,7 @@
  * API and all entry points of n-acd.
  *
  * XXX:
- *  - turn ms to ns (and also us to ns)
+ *  - turn ms to ns
  *  - make DEFEND a true integer input
  */
 
