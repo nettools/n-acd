@@ -8,6 +8,7 @@
 #include <poll.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <sys/timerfd.h>
 #include "timer.h"
 
 #define N_TIMEOUTS (10000)
@@ -97,7 +98,76 @@ static void test_pop(void) {
         timer_deinit(&timer);
 }
 
+void test_arm(void) {
+        struct itimerspec spec = {
+                .it_value = {
+                        .tv_sec = 1000,
+                },
+        };
+        int fd1, fd2, r;
+
+        fd1 = timerfd_create(CLOCK_BOOTTIME, TFD_CLOEXEC | TFD_NONBLOCK);
+        assert(fd1 >= 0);
+
+        fd2 = timerfd_create(CLOCK_BOOTTIME, TFD_CLOEXEC | TFD_NONBLOCK);
+        assert(fd1 >= 0);
+
+        r = timerfd_settime(fd1, 0, &spec, NULL);
+        assert(r >= 0);
+
+        r = timerfd_settime(fd2, 0, &spec, NULL);
+        assert(r >= 0);
+
+        r = timerfd_gettime(fd1, &spec);
+        assert(r >= 0);
+        assert(spec.it_value.tv_sec);
+
+        r = timerfd_gettime(fd2, &spec);
+        assert(r >= 0);
+        assert(spec.it_value.tv_sec);
+
+        spec = (struct itimerspec){};
+
+        r = timerfd_settime(fd1, 0, &spec, NULL);
+        assert(r >= 0);
+
+        r = timerfd_gettime(fd1, &spec);
+        assert(r >= 0);
+        assert(!spec.it_value.tv_sec);
+        assert(!spec.it_value.tv_nsec);
+
+        r = timerfd_gettime(fd2, &spec);
+        assert(r >= 0);
+        assert(spec.it_value.tv_sec);
+
+        spec = (struct itimerspec){ .it_value = { .tv_nsec = 1, }, };
+
+        r = timerfd_settime(fd1, 0, &spec, NULL);
+        assert(r >= 0);
+
+        r = poll(&(struct pollfd) { .fd = fd1, .events = POLLIN }, 1, -1);
+        assert(r == 1);
+
+        r = timerfd_settime(fd2, 0, &spec, NULL);
+        assert(r >= 0);
+
+        r = poll(&(struct pollfd) { .fd = fd2, .events = POLLIN }, 1, -1);
+        assert(r == 1);
+
+        spec = (struct itimerspec){};
+
+        r = timerfd_settime(fd1, 0, &spec, NULL);
+        assert(r >= 0);
+
+        r = poll(&(struct pollfd) { .fd = fd2, .events = POLLIN }, 1, -1);
+        assert(r == 1);
+
+        close(fd2);
+        close(fd1);
+}
+
 int main(int argc, char **argv) {
+        test_arm();
         test_api();
         test_pop();
         return 0;
