@@ -134,8 +134,8 @@ static int n_acd_syscall_bpf(int cmd, union bpf_attr *attr, unsigned int size) {
 int n_acd_bpf_map_create(int *mapfdp, size_t max_entries) {
         union bpf_attr attr = {
                 .map_type    = BPF_MAP_TYPE_HASH,
-                .key_size    = 4,
-                .value_size  = 1,
+                .key_size    = sizeof(uint32_t),
+                .value_size  = sizeof(uint8_t), /* values are never used, but must be set */
                 .max_entries = max_entries,
         };
         int mapfd;
