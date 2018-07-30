@@ -81,7 +81,7 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
                                  * Preconfigure the address on one side, and
                                  * probe on the other. The probe must fail.
                                  */
-                                test_add_child_ip(&ip);
+                                test_add_child_ip(i);
 
                                 break;
                         case 2:
