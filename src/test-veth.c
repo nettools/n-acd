@@ -18,7 +18,7 @@
 #include <stdlib.h>
 #include "test.h"
 
-#define TEST_ACD_N_PROBES (64)
+#define TEST_ACD_N_PROBES (256)
 
 typedef enum {
         TEST_ACD_STATE_UNKNOWN,
@@ -55,11 +55,10 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
 
         {
                 NAcdProbeConfig *probe_config;
-                int fd1, fd2;
 
                 r = n_acd_probe_config_new(&probe_config);
                 assert(!r);
-                n_acd_probe_config_set_timeout(probe_config, 100);
+                n_acd_probe_config_set_timeout(probe_config, 8);
 
                 assert(TEST_ACD_N_PROBES <= 10 << 24);
 
@@ -105,73 +104,85 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
 
                 n_acd_probe_config_free(probe_config);
 
-                n_acd_get_fd(acd1, &fd1);
-                n_acd_get_fd(acd2, &fd2);
-
                 while (n_running > 0) {
                         NAcdEvent *event;
                         struct pollfd pfds[2] = {
-                                { .fd = fd1, .events = POLLIN },
-                                { .fd = fd2, .events = POLLIN },
+                                { .events = POLLIN },
+                                { .events = POLLIN },
                         };
+
+                        n_acd_get_fd(acd1, &pfds[0].fd);
+                        n_acd_get_fd(acd2, &pfds[1].fd);
 
                         r = poll(pfds, 2, -1);
                         assert(r >= 0);
 
-                        r = n_acd_dispatch(acd1);
-                        assert(!r);
+                        if (pfds[0].revents & POLLIN) {
+                                r = n_acd_dispatch(acd1);
+                                assert(!r || r == N_ACD_E_PREEMPTED);
 
-                        r = n_acd_pop_event(acd1, &event);
-                        assert(!r);
-                        if (event) {
-                                switch (event->event) {
-                                case N_ACD_EVENT_READY:
-                                        n_acd_probe_get_userdata(event->ready.probe, (void**)&state1);
-                                        assert(state1 == TEST_ACD_STATE_UNKNOWN);
-                                        state1 = TEST_ACD_STATE_READY;
-                                        n_acd_probe_set_userdata(event->ready.probe, (void*)state1);
+                                for (;;) {
+                                        r = n_acd_pop_event(acd1, &event);
+                                        assert(!r);
+                                        if (event) {
+                                                switch (event->event) {
+                                                case N_ACD_EVENT_READY:
+                                                        n_acd_probe_get_userdata(event->ready.probe, (void**)&state1);
+                                                        assert(state1 == TEST_ACD_STATE_UNKNOWN);
+                                                        state1 = TEST_ACD_STATE_READY;
+                                                        n_acd_probe_set_userdata(event->ready.probe, (void*)state1);
 
-                                        break;
-                                case N_ACD_EVENT_USED:
-                                        n_acd_probe_get_userdata(event->used.probe, (void**)&state1);
-                                        assert(state1 == TEST_ACD_STATE_UNKNOWN);
-                                        state1 = TEST_ACD_STATE_USED;
-                                        n_acd_probe_set_userdata(event->used.probe, (void*)state1);
+                                                        break;
+                                                case N_ACD_EVENT_USED:
+                                                        n_acd_probe_get_userdata(event->used.probe, (void**)&state1);
+                                                        assert(state1 == TEST_ACD_STATE_UNKNOWN);
+                                                        state1 = TEST_ACD_STATE_USED;
+                                                        n_acd_probe_set_userdata(event->used.probe, (void*)state1);
 
-                                        break;
-                                default:
-                                        assert(0);
+                                                        break;
+                                                default:
+                                                        assert(0);
+                                                }
+
+                                                --n_running;
+                                        } else {
+                                                break;
+                                        }
                                 }
-
-                                --n_running;
                         }
 
-                        r = n_acd_dispatch(acd2);
-                        assert(!r);
+                        if (pfds[1].revents & POLLIN) {
+                                r = n_acd_dispatch(acd2);
+                                assert(!r || r == N_ACD_E_PREEMPTED);
 
-                        r = n_acd_pop_event(acd2, &event);
-                        assert(!r);
-                        if (event) {
-                                switch (event->event) {
-                                case N_ACD_EVENT_READY:
-                                        n_acd_probe_get_userdata(event->ready.probe, (void**)&state2);
-                                        assert(state2 == TEST_ACD_STATE_UNKNOWN);
-                                        state2 = TEST_ACD_STATE_READY;
-                                        n_acd_probe_set_userdata(event->ready.probe, (void*)state2);
+                                for (;;) {
+                                        r = n_acd_pop_event(acd2, &event);
+                                        assert(!r);
+                                        if (event) {
+                                                switch (event->event) {
+                                                case N_ACD_EVENT_READY:
+                                                        n_acd_probe_get_userdata(event->ready.probe, (void**)&state2);
+                                                        assert(state2 == TEST_ACD_STATE_UNKNOWN);
+                                                        state2 = TEST_ACD_STATE_READY;
+                                                        n_acd_probe_set_userdata(event->ready.probe, (void*)state2);
 
-                                        break;
-                                case N_ACD_EVENT_USED:
-                                        n_acd_probe_get_userdata(event->used.probe, (void**)&state2);
-                                        assert(state2 == TEST_ACD_STATE_UNKNOWN);
-                                        state2 = TEST_ACD_STATE_USED;
-                                        n_acd_probe_set_userdata(event->used.probe, (void*)state2);
+                                                        break;
+                                                case N_ACD_EVENT_USED:
+                                                        n_acd_probe_get_userdata(event->used.probe, (void**)&state2);
+                                                        assert(state2 == TEST_ACD_STATE_UNKNOWN);
+                                                        state2 = TEST_ACD_STATE_USED;
+                                                        n_acd_probe_set_userdata(event->used.probe, (void*)state2);
 
-                                        break;
-                                default:
-                                        assert(0);
+                                                        break;
+                                                default:
+                                                        assert(0);
+                                                }
+
+                                                --n_running;
+                                        } else {
+                                                break;
+                                        }
                                 }
-
-                                --n_running;
                         }
                 }
 
@@ -214,8 +225,10 @@ int main(int argc, char **argv) {
                 return r;
 
         test_veth_new(&ifindex1, &mac1, &ifindex2, &mac2);
-        test_veth(ifindex1, mac1.ether_addr_octet, sizeof(mac1.ether_addr_octet),
-                  ifindex2, mac2.ether_addr_octet, sizeof(mac2.ether_addr_octet));
+        for (unsigned int i = 0; i < 8; ++i) {
+                test_veth(ifindex1, mac1.ether_addr_octet, sizeof(mac1.ether_addr_octet),
+                          ifindex2, mac2.ether_addr_octet, sizeof(mac2.ether_addr_octet));
+        }
 
         return 0;
 }
