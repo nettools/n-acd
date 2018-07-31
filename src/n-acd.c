@@ -565,7 +565,6 @@ static int n_acd_handle_packet(NAcd *acd, struct ether_arp *packet) {
 }
 
 static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
-        uint64_t v;
         int r;
 
         if (event->events & (EPOLLHUP | EPOLLERR)) {
@@ -578,29 +577,11 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
         }
 
         if (event->events & EPOLLIN) {
-                r = read(acd->timer.fd, &v, sizeof(v));
-                if (r < 0) {
-                        if (errno == EAGAIN) {
-                                /*
-                                 * No more pending events.
-                                 */
-                                return 0;
-                        } else {
-                                /*
-                                 * Something failed. We use CLOCK_BOOTTIME, so
-                                 * ECANCELED cannot happen. Hence, there is no
-                                 * error that we could gracefully handle. Fail
-                                 * hard and let the caller deal with it.
-                                 */
-                                return -n_acd_errno();
-                        }
-                } else if (r != sizeof(v)) {
-                        /*
-                         * Kernel guarantees 8-byte reads; fail hard if it
-                         * suddenly starts doing weird shit.
-                         */
-                        return -EIO;
-                }
+                r = timer_read(&acd->timer);
+                if (r <= 0)
+                        return r;
+
+                assert(r == TIMER_E_TRIGGERED);
 
                 /*
                  * We successfully read a timer-value. Handle it and return. We

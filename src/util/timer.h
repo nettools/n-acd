@@ -5,6 +5,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+enum {
+        TIMER_E_SUCCESS,
+
+        TIMER_E_TRIGGERED,
+};
+
 typedef struct Timer Timer;
 typedef struct Timeout Timeout;
 
@@ -36,6 +42,7 @@ void timer_now(Timer *timer, uint64_t *nowp);
 
 int timer_pop(Timer *timer, uint64_t now, Timeout **timerp);
 void timer_rearm(Timer *timer);
+int timer_read(Timer *timer);
 
 void timeout_schedule(Timeout *timeout, Timer *timer, uint64_t time);
 void timeout_unschedule(Timeout *timeout);

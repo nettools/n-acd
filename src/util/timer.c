@@ -74,6 +74,39 @@ void timer_rearm(Timer *timer) {
         }
 }
 
+int timer_read(Timer *timer) {
+        uint64_t v;
+        int r;
+
+        r = read(timer->fd, &v, sizeof(v));
+        if (r < 0) {
+                if (errno == EAGAIN) {
+                        /*
+                         * No more pending events.
+                         */
+                        return 0;
+                } else {
+                        /*
+                         * Something failed. We use CLOCK_BOOTTIME, so
+                         * ECANCELED cannot happen. Hence, there is no
+                         * error that we could gracefully handle. Fail
+                         * hard and let the caller deal with it.
+                         */
+                        return -errno;
+                }
+        } else if (r != sizeof(v) || v == 0) {
+                /*
+                 * Kernel guarantees 8-byte reads, and only to return
+                 * data if at least one timer triggered; fail hard if
+                 * it suddenly starts doing weird shit.
+                 */
+                return -EIO;
+        }
+
+        return TIMER_E_TRIGGERED;
+}
+
+
 int timer_pop(Timer *timer, uint64_t until, Timeout **timeoutp) {
         Timeout *timeout;
 
