@@ -453,6 +453,16 @@ static int n_acd_handle_timeout(NAcd *acd) {
         uint64_t now;
         int r;
 
+        /*
+         * Read the current time once, and handle all timouts that triggered
+         * before the current time. Rereading the current time in each loop
+         * might risk creating a live-lock, and the fact that we read the
+         * time after reading the timer guarantees that the timeout which
+         * woke us up is hanlded.
+         *
+         * When there are no more timeouts to handle at the given time, we
+         * rearm the timer to potentially wake us up again in the future.
+         */
         timer_now(&acd->timer, &now);
 
         for (;;) {
@@ -462,6 +472,10 @@ static int n_acd_handle_timeout(NAcd *acd) {
                 if (r < 0) {
                         return r;
                 } else if (!timeout) {
+                        /*
+                         * There are no more timeouts pending before @now. Rearm
+                         * the timer to fire again at the next timeout.
+                         */
                         timer_rearm(&acd->timer);
                         break;
                 }
@@ -584,13 +598,10 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
                 assert(r == TIMER_E_TRIGGERED);
 
                 /*
-                 * We successfully read a timer-value. Handle it and return. We
-                 * do not read multiple batches in a loop, since timerfd
-                 * already coalesces multiple timer-events into a single
-                 * counter. Hence, reading once is enough. Furthermore, we
-                 * always fetch the current time and handle all events that
-                 * fired before that time, hence we are never preempted, nor
-                 * can we live-lock.
+                 * A timer triggered, handle all pending timeouts at a given
+                 * point in time. There can only be a finite number of pending
+                 * timeouts, any new ones will be in the future, so not handled
+                 * now, but guaranteed to wake us up again when they do trigger.
                  */
                 r = n_acd_handle_timeout(acd);
                 if (r)
