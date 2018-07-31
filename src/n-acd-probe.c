@@ -59,12 +59,12 @@
  * multiplier of 9000.
  */
 #define N_ACD_RFC_PROBE_NUM                     (3)
-#define N_ACD_RFC_PROBE_WAIT_NSEC               (UINT64_C(111111)) /* 111us */
-#define N_ACD_RFC_PROBE_MIN_NSEC                (UINT64_C(111111)) /* 111us */
-#define N_ACD_RFC_PROBE_MAX_NSEC                (UINT64_C(333333)) /* 333us */
+#define N_ACD_RFC_PROBE_WAIT_NSEC               (UINT64_C(111111)) /* 1/9 ms */
+#define N_ACD_RFC_PROBE_MIN_NSEC                (UINT64_C(111111)) /* 1/9 ms */
+#define N_ACD_RFC_PROBE_MAX_NSEC                (UINT64_C(333333)) /* 3/9 ms */
 #define N_ACD_RFC_ANNOUNCE_NUM                  (3)
-#define N_ACD_RFC_ANNOUNCE_WAIT_NSEC            (UINT64_C(222222)) /* 222us */
-#define N_ACD_RFC_ANNOUNCE_INTERVAL_NSEC        (UINT64_C(222222)) /* 222us */
+#define N_ACD_RFC_ANNOUNCE_WAIT_NSEC            (UINT64_C(222222)) /* 2/9 ms */
+#define N_ACD_RFC_ANNOUNCE_INTERVAL_NSEC        (UINT64_C(222222)) /* 2/9 ms */
 #define N_ACD_RFC_MAX_CONFLICTS                 (10)
 #define N_ACD_RFC_RATE_LIMIT_INTERVAL_NSEC      (UINT64_C(60000000000)) /* 60s */
 #define N_ACD_RFC_DEFEND_INTERVAL_NSEC          (UINT64_C(10000000000)) /* 10s */
@@ -245,11 +245,11 @@ int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
          *   =         1s +        3s +        3s +            2s
          *   = 9s
          *
-         * Hence, the default value for this timeout is 9000, which just ends
-         * up matching the spec-provided values.
+         * Hence, the default value for this timeout is 9000ms, which just
+         * ends up matching the spec-provided values.
          *
          * What we now semantically do is divide this timeout by 1ns/1000000.
-         * This first turns it into microseconds, then strips the unit by
+         * This first turns it into nanoseconds, then strips the unit by
          * turning it into a multiplier. However, rather than performing the
          * division here, we multiplier all our timeouts by 1000000 statically
          * at compile time. Therefore, we can use the user-provided timeout as
