@@ -80,7 +80,7 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
                                  * Preconfigure the address on one side, and
                                  * probe on the other. The probe must fail.
                                  */
-                                test_add_child_ip(i);
+                                test_add_child_ip(&ip);
 
                                 break;
                         case 2:
@@ -187,6 +187,8 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
                 }
 
                 for (size_t i = 0; i < TEST_ACD_N_PROBES; ++i) {
+                        struct in_addr ip = { htobe32((10 << 24) | i) };
+
                         switch (i % 3) {
                         case 0:
                                 n_acd_probe_get_userdata(probes1[i], (void **)&state1);
@@ -194,6 +196,8 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
 
                                 break;
                         case 1:
+                                test_del_child_ip(&ip);
+
                                 n_acd_probe_get_userdata(probes1[i], (void **)&state1);
                                 assert(state1 == TEST_ACD_STATE_USED);
 

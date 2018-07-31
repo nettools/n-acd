@@ -11,7 +11,9 @@
 #include <errno.h>
 #include <net/ethernet.h>
 #include <net/if.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <poll.h>
 #include <sched.h>
 #include <stdbool.h>
@@ -22,11 +24,24 @@
 #include <unistd.h>
 #include "n-acd.h"
 
-static inline void test_add_child_ip(int addr) {
+static inline void test_add_child_ip(const struct in_addr *addr) {
         char *p;
         int r;
 
-        r = asprintf(&p, "ip addr add dev veth1 10.0.0.%d", addr);
+        r = asprintf(&p, "ip addr add dev veth1 %s/8", inet_ntoa(*addr));
+        assert(r >= 0);
+
+        r = system(p);
+        assert(r >= 0);
+
+        free(p);
+}
+
+static inline void test_del_child_ip(const struct in_addr *addr) {
+        char *p;
+        int r;
+
+        r = asprintf(&p, "ip addr del dev veth1 %s/8", inet_ntoa(*addr));
         assert(r >= 0);
 
         r = system(p);
