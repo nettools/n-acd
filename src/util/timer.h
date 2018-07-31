@@ -40,7 +40,7 @@ void timer_deinit(Timer *timer);
 
 void timer_now(Timer *timer, uint64_t *nowp);
 
-int timer_pop(Timer *timer, uint64_t now, Timeout **timerp);
+int timer_pop_timeout(Timer *timer, uint64_t now, Timeout **timerp);
 void timer_rearm(Timer *timer);
 int timer_read(Timer *timer);
 

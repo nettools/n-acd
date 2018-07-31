@@ -458,7 +458,7 @@ static int n_acd_handle_timeout(NAcd *acd) {
         for (;;) {
                 Timeout *timeout;
 
-                r = timer_pop(&acd->timer, now, &timeout);
+                r = timer_pop_timeout(&acd->timer, now, &timeout);
                 if (r < 0) {
                         return r;
                 } else if (!timeout) {

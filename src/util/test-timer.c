@@ -24,13 +24,13 @@ static void test_api(void) {
         timeout_schedule(&t1, &timer, 1);
         timeout_schedule(&t2, &timer, 2);
 
-        r = timer_pop(&timer, 10, &t);
+        r = timer_pop_timeout(&timer, 10, &t);
         assert(!r);
         assert(t == &t1);
 
         timeout_unschedule(&t2);
 
-        r = timer_pop(&timer, 10, &t);
+        r = timer_pop_timeout(&timer, 10, &t);
         assert(!r);
         assert(!t);
 
@@ -77,7 +77,7 @@ static void test_pop(void) {
                 for (;;) {
                         uint64_t current_time;
 
-                        r = timer_pop(&timer, i, &t);
+                        r = timer_pop_timeout(&timer, i, &t);
                         assert(!r);
                         if (!t) {
                                 timer_rearm(&timer);
@@ -93,7 +93,7 @@ static void test_pop(void) {
 
         assert(n_timeouts == N_TIMEOUTS);
 
-        r = timer_pop(&timer, (uint64_t)-1, &t);
+        r = timer_pop_timeout(&timer, (uint64_t)-1, &t);
         assert(!r);
         assert(!t);
 

@@ -107,7 +107,7 @@ int timer_read(Timer *timer) {
 }
 
 
-int timer_pop(Timer *timer, uint64_t until, Timeout **timeoutp) {
+int timer_pop_timeout(Timer *timer, uint64_t until, Timeout **timeoutp) {
         Timeout *timeout;
 
         /*
