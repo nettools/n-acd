@@ -79,8 +79,10 @@ static void test_pop(void) {
 
                         r = timer_pop(&timer, i, &t);
                         assert(!r);
-                        if (!t)
+                        if (!t) {
+                                timer_rearm(&timer);
                                 break;
+                        }
 
                         current_time = times[t - timeouts];
                         assert(current_time == i);

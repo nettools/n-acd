@@ -43,26 +43,28 @@ void timer_now(Timer *timer, uint64_t *nowp) {
         *nowp = ts.tv_sec * UINT64_C(1000000000) + ts.tv_nsec;
 }
 
-static void timer_rearm(Timer *timer) {
-        uint64_t time, sec, nsec;
+void timer_rearm(Timer *timer) {
+        uint64_t time;
         Timeout *timeout;
         int r;
 
-        timeout = c_rbnode_entry(c_rbtree_first(&timer->tree), Timeout, node);
-        time = timeout ? timeout->timeout : 0;
+        /*
+         * A timeout value of 0 clears the timer, we sholud only set that if
+         * no timout exists in the tree.
+         */
 
+        timeout = c_rbnode_entry(c_rbtree_first(&timer->tree), Timeout, node);
         assert(!timeout || timeout->timeout);
 
-        if (time != timer->scheduled_timeout) {
-                sec = time / UINT64_C(1000000000);
-                nsec = time % UINT64_C(1000000000);
+        time = timeout ? timeout->timeout : 0;
 
+        if (time != timer->scheduled_timeout) {
                 r = timerfd_settime(timer->fd,
                                     TFD_TIMER_ABSTIME,
                                     &(struct itimerspec){
                                             .it_value = {
-                                                    .tv_sec = sec,
-                                                    .tv_nsec = nsec,
+                                                    .tv_sec = time / UINT64_C(1000000000),
+                                                    .tv_nsec = time % UINT64_C(1000000000),
                                             },
                                     },
                                     NULL);
@@ -77,12 +79,7 @@ int timer_pop(Timer *timer, uint64_t until, Timeout **timeoutp) {
 
         /*
          * If the first timeout is scheduled before @until, then unlink
-         * it and return it. Otherwise, rearm the timer to wake up us for
-         * the next timeout.
-         *
-         * Note that this means that the caller is responsible for draining
-         * all the pending timeouts until @until, otherwise the timer will
-         * not be rearmed.
+         * it and return it. Otherwise, return NULL.
          */
         timeout = c_rbnode_entry(c_rbtree_first(&timer->tree), Timeout, node);
         if (timeout && timeout->timeout <= until) {
@@ -90,7 +87,6 @@ int timer_pop(Timer *timer, uint64_t until, Timeout **timeoutp) {
                 timeout->timeout = 0;
                 *timeoutp = timeout;
         } else {
-                timer_rearm(timer);
                 *timeoutp = NULL;
         }
 

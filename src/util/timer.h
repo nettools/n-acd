@@ -35,6 +35,7 @@ void timer_deinit(Timer *timer);
 void timer_now(Timer *timer, uint64_t *nowp);
 
 int timer_pop(Timer *timer, uint64_t now, Timeout **timerp);
+void timer_rearm(Timer *timer);
 
 void timeout_schedule(Timeout *timeout, Timer *timer, uint64_t time);
 void timeout_unschedule(Timeout *timeout);

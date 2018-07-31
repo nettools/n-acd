@@ -459,10 +459,12 @@ static int n_acd_handle_timeout(NAcd *acd) {
                 Timeout *timeout;
 
                 r = timer_pop(&acd->timer, now, &timeout);
-                if (r < 0)
+                if (r < 0) {
                         return r;
-                else if (!timeout)
+                } else if (!timeout) {
+                        timer_rearm(&acd->timer);
                         break;
+                }
 
                 probe = c_container_of(timeout, NAcdProbe, timeout);
                 r = n_acd_probe_handle_timeout(probe);
