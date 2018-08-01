@@ -6,10 +6,6 @@
  * This is the public header of the n-acd library, implementing IPv4 Address
  * Conflict Detection as described in RFC-5227. This header defines the public
  * API and all entry points of n-acd.
- *
- * XXX:
- *  - turn ms to ns
- *  - make DEFEND a true integer input
  */
 
 #ifdef __cplusplus
