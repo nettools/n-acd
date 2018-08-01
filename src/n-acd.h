@@ -63,7 +63,6 @@ struct NAcdEvent {
                 } down;
                 struct {
                         NAcdProbe *probe;
-                        uint16_t operation;
                         uint8_t *sender;
                         size_t n_sender;
                 } used, defended, conflict;

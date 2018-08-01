@@ -481,7 +481,6 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                 if (r)
                         return r;
 
-                node->event.used.operation = be16toh(packet->ea_hdr.ar_op);
                 node->event.used.sender = node->sender;
                 node->event.used.n_sender = ETH_ALEN;
                 memcpy(node->sender, packet->arp_sha, ETH_ALEN);
@@ -556,7 +555,6 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                         if (r)
                                 return r;
 
-                        node->event.defended.operation = be16toh(packet->ea_hdr.ar_op);
                         node->event.defended.sender = node->sender;
                         node->event.defended.n_sender = ETH_ALEN;
                         memcpy(node->sender, packet->arp_sha, ETH_ALEN);
@@ -569,7 +567,6 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                         if (r)
                                 return r;
 
-                        node->event.conflict.operation = be16toh(packet->ea_hdr.ar_op);
                         node->event.conflict.sender = node->sender;
                         node->event.conflict.n_sender = ETH_ALEN;
                         memcpy(node->sender, packet->arp_sha, ETH_ALEN);
