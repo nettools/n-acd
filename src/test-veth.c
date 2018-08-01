@@ -32,7 +32,7 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
         NAcd *acd1, *acd2;
         NAcdProbe *probes1[TEST_ACD_N_PROBES];
         NAcdProbe *probes2[TEST_ACD_N_PROBES];
-        TestAcdState state1, state2;
+        unsigned long state1, state2;
         size_t n_running = 0;
         int r;
 
