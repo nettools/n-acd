@@ -124,8 +124,12 @@ static void n_acd_probe_schedule(NAcdProbe *probe, uint64_t n_timeout, unsigned 
          * nanoseconds as @n_jitter. We then use rand_r(3p) to get a
          * pseudo-random jitter on top of the real timeout given as @n_timeout.
          */
-        if (n_jitter)
-                n_time += rand_r(&probe->acd->seed) % n_jitter;
+        if (n_jitter) {
+                uint64_t random;
+
+                random = ((uint64_t)rand_r(&probe->acd->seed) << 32) | (uint64_t)rand_r(&probe->acd->seed);
+                n_time += random % n_jitter;
+        }
 
         timeout_schedule(&probe->timeout, &probe->acd->timer, n_time);
 }
