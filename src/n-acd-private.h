@@ -44,7 +44,9 @@ struct NAcdProbeConfig {
         uint64_t timeout_msecs;
 };
 
-#define N_ACD_PROBE_CONFIG_NULL(_x) { }
+#define N_ACD_PROBE_CONFIG_NULL(_x) {                                           \
+                .timeout_msecs = N_ACD_TIMEOUT_RFC5227,                         \
+        }
 
 struct NAcdEventNode {
         CList acd_link;
