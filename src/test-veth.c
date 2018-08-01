@@ -58,7 +58,7 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
 
                 r = n_acd_probe_config_new(&probe_config);
                 assert(!r);
-                n_acd_probe_config_set_timeout(probe_config, 8);
+                n_acd_probe_config_set_timeout(probe_config, 64);
 
                 assert(TEST_ACD_N_PROBES <= 10 << 24);
 
