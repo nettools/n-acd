@@ -18,7 +18,7 @@
 #include <stdlib.h>
 #include "test.h"
 
-#define TEST_ACD_N_PROBES (256)
+#define TEST_ACD_N_PROBES (128)
 
 typedef enum {
         TEST_ACD_STATE_UNKNOWN,
