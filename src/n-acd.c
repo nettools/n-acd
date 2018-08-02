@@ -376,11 +376,13 @@ int n_acd_send(NAcd *acd, const struct in_addr *tpa, const struct in_addr *spa) 
                 .sll_addr = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff },
         };
         struct ether_arp arp = {
-                .ea_hdr.ar_hrd = htobe16(ARPHRD_ETHER),
-                .ea_hdr.ar_pro = htobe16(ETHERTYPE_IP),
-                .ea_hdr.ar_hln = sizeof(acd->mac),
-                .ea_hdr.ar_pln = sizeof(uint32_t),
-                .ea_hdr.ar_op = htobe16(ARPOP_REQUEST),
+                .ea_hdr = {
+                        .ar_hrd = htobe16(ARPHRD_ETHER),
+                        .ar_pro = htobe16(ETHERTYPE_IP),
+                        .ar_hln = sizeof(acd->mac),
+                        .ar_pln = sizeof(uint32_t),
+                        .ar_op = htobe16(ARPOP_REQUEST),
+                },
         };
         ssize_t l;
         int r;

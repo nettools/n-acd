@@ -16,11 +16,13 @@
 #include "bpf-filter.h"
 
 #define ETHER_ARP_PACKET_INIT(_op, _mac, _sip, _tip) {                  \
-                .arp_hrd = htobe16(ARPHRD_ETHER),                       \
-                .arp_pro = htobe16(ETHERTYPE_IP),                       \
-                .arp_hln = 6,                                           \
-                .arp_pln = 4,                                           \
-                .arp_op = htobe16(_op),                                 \
+                .ea_hdr = {                                             \
+                        .ar_hrd = htobe16(ARPHRD_ETHER),                \
+                        .ar_pro = htobe16(ETHERTYPE_IP),                \
+                        .ar_hln = 6,                                    \
+                        .ar_pln = 4,                                    \
+                        .ar_op = htobe16(_op),                          \
+                },                                                      \
                 .arp_sha[0] = (_mac)->ether_addr_octet[0],              \
                 .arp_sha[1] = (_mac)->ether_addr_octet[1],              \
                 .arp_sha[2] = (_mac)->ether_addr_octet[2],              \
