@@ -108,7 +108,7 @@ static void test_filter(void) {
         r = socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK, 0, pair);
         assert(r >= 0);
 
-	r = setsockopt(pair[1], SOL_SOCKET, SO_ATTACH_BPF, &progfd,
+        r = setsockopt(pair[1], SOL_SOCKET, SO_ATTACH_BPF, &progfd,
                        sizeof(progfd));
         assert(r >= 0);
 
