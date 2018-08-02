@@ -161,7 +161,7 @@ static int n_acd_probe_link(NAcdProbe *probe) {
         /*
          * Make sure the kernel bpf map has space for at least one more
          * entry.
-        */
+         */
         r = n_acd_ensure_bpf_map_space(probe->acd);
         if (r)
                 return r;
