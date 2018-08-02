@@ -27,7 +27,7 @@ LICENSE:
 REQUIREMENTS:
         The requirements for n-acd are:
 
-            Linux kernel >= 3.0
+            Linux kernel >= 3.19
             libc (e.g., glibc >= 2.16)
 
         At build-time, the following software is required:
