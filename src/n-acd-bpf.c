@@ -1,13 +1,14 @@
-/* eBPF filter for IPv4 Address Conflict Detection
+/*
+ * eBPF filter for IPv4 Address Conflict Detection
  *
  * An eBPF map and an eBPF program are provided. The map contains all the
- * addresses address conflict detection are performed on, and the program
+ * addresses address conflict detection is performed on, and the program
  * filters out all packets except exactly the packets relevant to the ACD
  * protocol on the addresses currently in the map.
  *
  * Note that userspace still has to filter the incoming packets, as filter
- * happens when packets are queued on the socket, not when userspace calls
- * receive. It is therefore possible to receive packets about addresses
+ * are applied when packets are queued on the socket, not when userspace
+ * receives them. It is therefore possible to receive packets about addresses
  * that have already been removed.
  */
 
@@ -23,109 +24,120 @@
 #include <unistd.h>
 #include "n-acd-private.h"
 
-#define BPF_LD_ABS(SIZE, IMM)					\
-	((struct bpf_insn) {					\
-		.code  = BPF_LD | BPF_SIZE(SIZE) | BPF_ABS,	\
-		.dst_reg = 0,					\
-		.src_reg = 0,					\
-		.off   = 0,					\
-		.imm   = IMM })
+#define BPF_LD_ABS(SIZE, IMM)                                                   \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_LD | BPF_SIZE(SIZE) | BPF_ABS,            \
+                .dst_reg        = 0,                                            \
+                .src_reg        = 0,                                            \
+                .off            = 0,                                            \
+                .imm            = IMM,                                          \
+        })
 
-#define BPF_LDX_MEM(SIZE, DST, SRC, OFF)			\
-	((struct bpf_insn) {					\
-		.code  = BPF_LDX | BPF_SIZE(SIZE) | BPF_MEM,	\
-		.dst_reg = DST,					\
-		.src_reg = SRC,					\
-		.off   = OFF,					\
-		.imm   = 0 })
+#define BPF_LDX_MEM(SIZE, DST, SRC, OFF)                                        \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_LDX | BPF_SIZE(SIZE) | BPF_MEM,           \
+                .dst_reg        = DST,                                          \
+                .src_reg        = SRC,                                          \
+                .off            = OFF,                                          \
+                .imm            = 0,                                            \
+        })
 
-#define BPF_LD_MAP_FD(DST, MAP_FD)				\
-	((struct bpf_insn) {					\
-		.code  = BPF_LD | BPF_DW | BPF_IMM,		\
-		.dst_reg = DST,					\
-		.src_reg = BPF_PSEUDO_MAP_FD,			\
-		.off   = 0,					\
-		.imm   = (__u32) (MAP_FD) }),			\
-	((struct bpf_insn) {					\
-		.code  = 0, /* zero is reserved opcode */	\
-		.dst_reg = 0,					\
-		.src_reg = 0,					\
-		.off   = 0,					\
-		.imm   = ((__u64) (MAP_FD)) >> 32 })
+#define BPF_LD_MAP_FD(DST, MAP_FD)                                              \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_LD | BPF_DW | BPF_IMM,                    \
+                .dst_reg        = DST,                                          \
+                .src_reg        = BPF_PSEUDO_MAP_FD,                            \
+                .off            = 0,                                            \
+                .imm            = (__u32) (MAP_FD),                             \
+        }),                                                                     \
+        ((struct bpf_insn) {                                                    \
+                .code           = 0, /* zero is reserved opcode */              \
+                .dst_reg        = 0,                                            \
+                .src_reg        = 0,                                            \
+                .off            = 0,                                            \
+                .imm            = ((__u64) (MAP_FD)) >> 32,                     \
+        })
 
-#define BPF_ALU_REG(OP, DST, SRC)				\
-	((struct bpf_insn) {					\
-		.code  = BPF_ALU64 | BPF_OP(OP) | BPF_X,	\
-		.dst_reg = DST,					\
-		.src_reg = SRC,					\
-		.off   = 0,					\
-		.imm   = 0 })
+#define BPF_ALU_REG(OP, DST, SRC)                                               \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_ALU64 | BPF_OP(OP) | BPF_X,               \
+                .dst_reg        = DST,                                          \
+                .src_reg        = SRC,                                          \
+                .off            = 0,                                            \
+                .imm            = 0,                                            \
+        })
 
-#define BPF_ALU_IMM(OP, DST, IMM)				\
-	((struct bpf_insn) {					\
-		.code  = BPF_ALU64 | BPF_OP(OP) | BPF_K,	\
-		.dst_reg = DST,					\
-		.src_reg = 0,					\
-		.off   = 0,					\
-		.imm   = IMM })
+#define BPF_ALU_IMM(OP, DST, IMM)                                               \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_ALU64 | BPF_OP(OP) | BPF_K,               \
+                .dst_reg        = DST,                                          \
+                .src_reg        = 0,                                            \
+                .off            = 0,                                            \
+                .imm            = IMM,                                          \
+        })
 
-#define BPF_MOV_REG(DST, SRC)					\
-	((struct bpf_insn) {					\
-		.code  = BPF_ALU64 | BPF_MOV | BPF_X,		\
-		.dst_reg = DST,					\
-		.src_reg = SRC,					\
-		.off   = 0,					\
-		.imm   = 0 })
+#define BPF_MOV_REG(DST, SRC)                                                   \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_ALU64 | BPF_MOV | BPF_X,                  \
+                .dst_reg        = DST,                                          \
+                .src_reg        = SRC,                                          \
+                .off            = 0,                                            \
+                .imm            = 0,                                            \
+        })
 
-#define BPF_MOV_IMM(DST, IMM)					\
-	((struct bpf_insn) {					\
-		.code  = BPF_ALU64 | BPF_MOV | BPF_K,		\
-		.dst_reg = DST,					\
-		.src_reg = 0,					\
-		.off   = 0,					\
-		.imm   = IMM })
+#define BPF_MOV_IMM(DST, IMM)                                                   \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_ALU64 | BPF_MOV | BPF_K,                  \
+                .dst_reg        = DST,                                          \
+                .src_reg        = 0,                                            \
+                .off            = 0,                                            \
+                .imm            = IMM,                                          \
+        })
 
-#define BPF_STX_MEM(SIZE, DST, SRC, OFF)			\
-	((struct bpf_insn) {					\
-		.code  = BPF_STX | BPF_SIZE(SIZE) | BPF_MEM,	\
-		.dst_reg = DST,					\
-		.src_reg = SRC,					\
-		.off   = OFF,					\
-		.imm   = 0 })
+#define BPF_STX_MEM(SIZE, DST, SRC, OFF)                                        \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_STX | BPF_SIZE(SIZE) | BPF_MEM,           \
+                .dst_reg        = DST,                                          \
+                .src_reg        = SRC,                                          \
+                .off            = OFF,                                          \
+                .imm            = 0,                                            \
+        })
 
-#define BPF_JMP_REG(OP, DST, SRC, OFF)				\
-	((struct bpf_insn) {					\
-		.code  = BPF_JMP | BPF_OP(OP) | BPF_X,		\
-		.dst_reg = DST,					\
-		.src_reg = SRC,					\
-		.off   = OFF,					\
-		.imm   = 0 })
+#define BPF_JMP_REG(OP, DST, SRC, OFF)                                          \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_JMP | BPF_OP(OP) | BPF_X,                 \
+                .dst_reg        = DST,                                          \
+                .src_reg        = SRC,                                          \
+                .off            = OFF,                                          \
+                .imm            = 0,                                            \
+        })
 
-#define BPF_JMP_IMM(OP, DST, IMM, OFF)				\
-	((struct bpf_insn) {					\
-		.code  = BPF_JMP | BPF_OP(OP) | BPF_K,		\
-		.dst_reg = DST,					\
-		.src_reg = 0,					\
-		.off   = OFF,					\
-		.imm   = IMM })
+#define BPF_JMP_IMM(OP, DST, IMM, OFF)                                          \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_JMP | BPF_OP(OP) | BPF_K,                 \
+                .dst_reg        = DST,                                          \
+                .src_reg        = 0,                                            \
+                .off            = OFF,                                          \
+                .imm            = IMM,                                          \
+        })
 
-#define BPF_EMIT_CALL(FUNC)					\
-	((struct bpf_insn) {					\
-		.code  = BPF_JMP | BPF_CALL,			\
-		.dst_reg = 0,					\
-		.src_reg = 0,					\
-		.off   = 0,					\
-		.imm   = FUNC })
+#define BPF_EMIT_CALL(FUNC)                                                     \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_JMP | BPF_CALL,                           \
+                .dst_reg        = 0,                                            \
+                .src_reg        = 0,                                            \
+                .off            = 0,                                            \
+                .imm            = FUNC,                                         \
+        })
 
-#define BPF_EXIT_INSN()						\
-	((struct bpf_insn) {					\
-		.code  = BPF_JMP | BPF_EXIT,			\
-		.dst_reg = 0,					\
-		.src_reg = 0,					\
-		.off   = 0,					\
-		.imm   = 0 })
-
-
+#define BPF_EXIT_INSN()                                                         \
+        ((struct bpf_insn) {                                                    \
+                .code           = BPF_JMP | BPF_EXIT,                           \
+                .dst_reg        = 0,                                            \
+                .src_reg        = 0,                                            \
+                .off            = 0,                                            \
+                .imm            = 0,                                            \
+        })
 
 static int n_acd_syscall_bpf(int cmd, union bpf_attr *attr, unsigned int size) {
         return (int)syscall(__NR_bpf, cmd, attr, size);
@@ -164,7 +176,7 @@ int n_acd_bpf_map_add(int mapfd, struct in_addr *addrp) {
                 return -errno;
 
         return 0;
-};
+}
 
 int n_acd_bpf_map_remove(int mapfd, struct in_addr *addrp) {
         uint32_t addr = be32toh(addrp->s_addr);
@@ -179,7 +191,7 @@ int n_acd_bpf_map_remove(int mapfd, struct in_addr *addrp) {
                 return -errno;
 
         return 0;
-};
+}
 
 int n_acd_bpf_compile(int *progfdp, int mapfd, struct ether_addr *macp) {
         const union {
