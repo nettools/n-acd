@@ -1,84 +1,82 @@
 #
 # target: libnacd.so
-# We build both, a static and a shared library. We want our tests to get access
-# to internals, so we link them statically.
 #
 
-libnacd_private = static_library('nacd-private',
-                                 [
-                                        'n-acd.c',
-                                        'n-acd-bpf.c',
-                                        'n-acd-probe.c',
-                                        'util/timer.c',
-                                 ],
-                                 c_args: [
-                                        '-fvisibility=hidden',
-                                        '-fno-common'
-                                 ],
-                                 dependencies: [
-                                        dep_clist,
-                                        dep_crbtree,
-                                        dep_csiphash,
-                                        dep_csundry,
-                                 ],
-                                 pic: true)
-install_headers('n-acd.h')
 libnacd_symfile = join_paths(meson.current_source_dir(), 'libnacd.sym')
-libnacd_shared = shared_library('nacd',
-                                dependencies: [ dep_csiphash, dep_crbtree ],
-                                objects: libnacd_private.extract_all_objects(),
-                                install: true,
-                                soversion: 0,
-                                link_depends: libnacd_symfile,
-                                link_args: [
-                                        '-Wl,--no-undefined',
-                                        '-Wl,--version-script=@0@'.format(libnacd_symfile)
-                                ])
-mod_pkgconfig.generate(libraries: libnacd_shared,
-                       version: meson.project_version(),
-                       name: 'libnacd',
-                       filebase: 'libnacd',
-                       description: 'IPv4 Address Conflict Detection')
 
-#
-# target: test-api
-# The test-api program explicitly links against the shared library, since it
-# tests for symbol visibility.
-#
+libnacd_deps = [
+        dep_clist,
+        dep_crbtree,
+        dep_csiphash,
+        dep_csundry,
+]
 
-test_api = executable('test-api',
-                      ['test-api.c'],
-                      link_with: libnacd_shared)
-test('API Symbol Visibility', test_api)
+libnacd_private = static_library(
+        'nacd-private',
+        [
+                'n-acd.c',
+                'n-acd-bpf.c',
+                'n-acd-probe.c',
+                'util/timer.c',
+        ],
+        c_args: [
+                '-fvisibility=hidden',
+                '-fno-common'
+        ],
+        dependencies: libnacd_deps,
+        pic: true,
+)
+
+libnacd_shared = shared_library(
+        'nacd',
+        objects: libnacd_private.extract_all_objects(),
+        dependencies: libnacd_deps,
+        install: not meson.is_subproject(),
+        soversion: 0,
+        link_depends: libnacd_symfile,
+        link_args: [
+                '-Wl,--no-undefined',
+                '-Wl,--version-script=@0@'.format(libnacd_symfile)
+        ],
+)
+
+libnacd_dep = declare_dependency(
+        include_directories: include_directories('.'),
+        link_with: libnacd_private,
+        dependencies: libnacd_deps,
+        version: meson.project_version()
+)
+
+if not meson.is_subproject()
+        install_headers('n-acd.h')
+
+        mod_pkgconfig.generate(
+                libraries: libnacd_shared,
+                version: meson.project_version(),
+                name: 'libnacd',
+                filebase: 'libnacd',
+                description: 'IPv4 Address Conflict Detection',
+        )
+endif
 
 #
 # target: test-*
-# All other tests are listed here. They link against the static library, so
-# they can access internals for verification.
 #
 
-test_loopback = executable('test-loopback',
-                           ['test-loopback.c'],
-                           link_with: libnacd_private)
-test('Echo Suppression via Loopback', test_loopback)
+test_api = executable('test-api', ['test-api.c'], link_with: libnacd_shared)
+test('API Symbol Visibility', test_api)
 
-test_veth = executable('test-veth',
-                       ['test-veth.c'],
-                       link_with: libnacd_private)
-test('Parallel ACD instances', test_veth)
-
-#test_unplug = executable('test-unplug',
-#                         ['test-unplug.c'],
-#                         link_with: libnacd_private)
-#test('Async Interface Hotplug', test_unplug)
-
-test_bpf = executable('test-bpf',
-                      ['test-bpf.c'],
-                      link_with: libnacd_private)
+test_bpf = executable('test-bpf', ['test-bpf.c'], dependencies: libnacd_dep)
 test('eBPF socket filtering', test_bpf)
 
-test_timer = executable('test-timer',
-                        ['util/test-timer.c'],
-                        link_with: libnacd_private,
-                        dependencies: [dep_crbtree])
+test_loopback = executable('test-loopback', ['test-loopback.c'], dependencies: libnacd_dep)
+test('Echo Suppression via Loopback', test_loopback)
+
+test_timer = executable('test-timer', ['util/test-timer.c'], dependencies: libnacd_dep)
 test('Timer helper', test_timer)
+
+#test_unplug = executable('test-unplug', ['test-unplug.c'], dependencies: libnacd_dep)
+#test('Async Interface Hotplug', test_unplug)
+
+test_veth = executable('test-veth', ['test-veth.c'], dependencies: libnacd_dep)
+test('Parallel ACD instances', test_veth)
