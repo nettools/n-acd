@@ -611,6 +611,47 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
         return 0;
 }
 
+static bool n_acd_packet_is_valid(NAcd *acd, void *packet, size_t n_packet) {
+        struct ether_arp *arp;
+
+        /*
+         * The eBPF filter will ensure that this function always returns true, however,
+         * this allows the eBPF filter to be an optional optimization which is necessary
+         * on older kernels.
+         *
+         * See comments in n-acd-bpf.c for details.
+         */
+
+        if (n_packet != sizeof(*arp))
+                return false;
+
+        arp = packet;
+
+        if (arp->arp_hrd != htobe16(ARPHRD_ETHER))
+                return false;
+
+        if (arp->arp_pro != htobe16(ETHERTYPE_IP))
+                return false;
+
+        if (arp->arp_hln != sizeof(struct ether_addr))
+                return false;
+
+        if (arp->arp_pln != sizeof(struct in_addr))
+                return false;
+
+        if (!memcmp(arp->arp_sha, acd->mac, sizeof(struct ether_addr)))
+                return false;
+
+        if (memcmp(arp->arp_spa, &((struct in_addr) { INADDR_ANY }), sizeof(struct in_addr))) {
+                if (arp->arp_op != htobe16(ARPOP_REQUEST) && arp->arp_op != htobe16(ARPOP_REPLY))
+                        return false;
+        } else if (arp->arp_op != htobe16(ARPOP_REQUEST)) {
+                return false;
+        }
+
+        return true;
+}
+
 static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
         const size_t n_batch = 8;
         struct mmsghdr msgs[n_batch];
@@ -691,14 +732,8 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
         }
 
         for (i = 0; i < n; ++i) {
-                /*
-                 * Our BPF-filter discards anything that does not exactly match
-                 * our expected packet size. Lets be pedantic and complain
-                 * loudly whenever something is off.
-                 */
-                if (msgs[i].msg_len != sizeof(data[i]))
-                        return -EIO;
-
+                if (!n_acd_packet_is_valid(acd, data + i, msgs[i].msg_len))
+                        continue;
                 /*
                  * Handle the packet. Bail out if something went wrong. Note
                  * that this must be fatal errors, since we discard all other
