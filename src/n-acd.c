@@ -85,9 +85,11 @@ static int n_acd_socket_new(int *fdp, int fd_bpf_prog, NAcdConfig *config) {
                 goto error;
         }
 
-        r = setsockopt(s, SOL_SOCKET, SO_ATTACH_BPF, &fd_bpf_prog, sizeof(fd_bpf_prog));
-        if (r < 0)
-                return -n_acd_errno();
+        if (fd_bpf_prog >= 0) {
+                r = setsockopt(s, SOL_SOCKET, SO_ATTACH_BPF, &fd_bpf_prog, sizeof(fd_bpf_prog));
+                if (r < 0)
+                        return -n_acd_errno();
+        }
 
         r = bind(s, (struct sockaddr *)&address, sizeof(address));
         if (r < 0) {
@@ -205,11 +207,14 @@ int n_acd_ensure_bpf_map_space(NAcd *acd) {
         if (r)
                 return r;
 
-        r = setsockopt(acd->fd_socket, SOL_SOCKET, SO_ATTACH_BPF, &fd_prog, sizeof(fd_prog));
-        if (r)
-                return -n_acd_errno();
+        if (fd_prog >= 0) {
+                r = setsockopt(acd->fd_socket, SOL_SOCKET, SO_ATTACH_BPF, &fd_prog, sizeof(fd_prog));
+                if (r)
+                        return -n_acd_errno();
+        }
 
-        close(acd->fd_bpf_map);
+        if (acd->fd_bpf_map >= 0)
+                close(acd->fd_bpf_map);
         acd->fd_bpf_map = fd_map;
         fd_map = -1;
         acd->max_bpf_map = max_map;

@@ -11,14 +11,25 @@ libnacd_deps = [
         dep_csundry,
 ]
 
+libnacd_sources = [
+	'n-acd.c',
+	'n-acd-probe.c',
+	'util/timer.c',
+]
+
+if use_ebpf
+        libnacd_sources += [
+                'n-acd-bpf.c',
+        ]
+else
+        libnacd_sources += [
+                'n-acd-bpf-fallback.c',
+        ]
+endif
+
 libnacd_private = static_library(
         'nacd-private',
-        [
-                'n-acd.c',
-                'n-acd-bpf.c',
-                'n-acd-probe.c',
-                'util/timer.c',
-        ],
+        libnacd_sources,
         c_args: [
                 '-fvisibility=hidden',
                 '-fno-common'
@@ -66,8 +77,10 @@ endif
 test_api = executable('test-api', ['test-api.c'], link_with: libnacd_shared)
 test('API Symbol Visibility', test_api)
 
-test_bpf = executable('test-bpf', ['test-bpf.c'], dependencies: libnacd_dep)
-test('eBPF socket filtering', test_bpf)
+if use_ebpf
+        test_bpf = executable('test-bpf', ['test-bpf.c'], dependencies: libnacd_dep)
+        test('eBPF socket filtering', test_bpf)
+endif
 
 test_loopback = executable('test-loopback', ['test-loopback.c'], dependencies: libnacd_dep)
 test('Echo Suppression via Loopback', test_loopback)
