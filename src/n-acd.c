@@ -715,7 +715,7 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
                          */
                         return -n_acd_errno();
                 }
-        } else if (n >= n_batch) {
+        } else if (n >= (ssize_t)n_batch) {
                 /*
                  * If all buffers were filled with data, we cannot be sure that
                  * there is nothing left to read. But to avoid starvation, we
@@ -736,7 +736,7 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
                 acd->preempted = true;
         }
 
-        for (i = 0; i < n; ++i) {
+        for (i = 0; (ssize_t)i < n; ++i) {
                 if (!n_acd_packet_is_valid(acd, data + i, msgs[i].msg_len))
                         continue;
                 /*
