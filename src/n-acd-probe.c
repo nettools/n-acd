@@ -548,7 +548,8 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                                         }
                                 }
 
-                                probe->last_defend = now;
+                                if (r != -N_ACD_E_DROPPED)
+                                        probe->last_defend = now;
                         }
 
                         r = n_acd_probe_raise(probe, &node, N_ACD_EVENT_DEFENDED);
