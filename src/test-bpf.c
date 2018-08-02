@@ -39,7 +39,7 @@
                 .arp_tpa[3] =  be32toh((_tip)->s_addr) & 0xff,          \
         }
 
-static void test_map() {
+static void test_map(void) {
         int r, mapfd = -1;
         struct in_addr addr = { 1 };
 
