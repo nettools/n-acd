@@ -12,9 +12,9 @@ libnacd_deps = [
 ]
 
 libnacd_sources = [
-	'n-acd.c',
-	'n-acd-probe.c',
-	'util/timer.c',
+        'n-acd.c',
+        'n-acd-probe.c',
+        'util/timer.c',
 ]
 
 if use_ebpf
