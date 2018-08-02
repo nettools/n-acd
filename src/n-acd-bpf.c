@@ -19,6 +19,7 @@
 #include <netinet/in.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -144,13 +145,16 @@ static int n_acd_syscall_bpf(int cmd, union bpf_attr *attr, unsigned int size) {
 }
 
 int n_acd_bpf_map_create(int *mapfdp, size_t max_entries) {
-        union bpf_attr attr = {
+        union bpf_attr attr;
+        int mapfd;
+
+        memset(&attr, 0, sizeof(attr));
+        attr = (union bpf_attr){
                 .map_type    = BPF_MAP_TYPE_HASH,
                 .key_size    = sizeof(uint32_t),
                 .value_size  = sizeof(uint8_t), /* values are never used, but must be set */
                 .max_entries = max_entries,
         };
-        int mapfd;
 
         mapfd = n_acd_syscall_bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
         if (mapfd < 0)
@@ -161,15 +165,18 @@ int n_acd_bpf_map_create(int *mapfdp, size_t max_entries) {
 }
 
 int n_acd_bpf_map_add(int mapfd, struct in_addr *addrp) {
+        union bpf_attr attr;
         uint32_t addr = be32toh(addrp->s_addr);
         uint8_t _dummy = 0;
-        union bpf_attr attr = {
+        int r;
+
+        memset(&attr, 0, sizeof(attr));
+        attr = (union bpf_attr){
                 .map_fd = mapfd,
                 .key    = (uint64_t)(unsigned long)&addr,
                 .value  = (uint64_t)(unsigned long)&_dummy,
                 .flags  = BPF_NOEXIST,
         };
-        int r;
 
         r = n_acd_syscall_bpf(BPF_MAP_UPDATE_ELEM, &attr, sizeof(attr));
         if (r < 0)
@@ -180,11 +187,14 @@ int n_acd_bpf_map_add(int mapfd, struct in_addr *addrp) {
 
 int n_acd_bpf_map_remove(int mapfd, struct in_addr *addrp) {
         uint32_t addr = be32toh(addrp->s_addr);
-        union bpf_attr attr = {
+        union bpf_attr attr;
+        int r;
+
+        memset(&attr, 0, sizeof(attr));
+        attr = (union bpf_attr){
                 .map_fd = mapfd,
                 .key    = (uint64_t)(unsigned long)&addr,
         };
-        int r;
 
         r = n_acd_syscall_bpf(BPF_MAP_DELETE_ELEM, &attr, sizeof(attr));
         if (r < 0)
@@ -287,13 +297,16 @@ int n_acd_bpf_compile(int *progfdp, int mapfd, struct ether_addr *macp) {
                 BPF_MOV_IMM(0, sizeof(struct ether_arp)),                       /* r0 = sizeof(struct ether_arp) */
                 BPF_EXIT_INSN(),                                                /* return */
         };
-        union bpf_attr attr = {
+        union bpf_attr attr;
+        int progfd;
+
+        memset(&attr, 0, sizeof(attr));
+        attr = (union bpf_attr){
                 .prog_type = BPF_PROG_TYPE_SOCKET_FILTER,
                 .insns     = (uint64_t)(unsigned long)prog,
                 .insn_cnt  = sizeof(prog) / sizeof(*prog),
                 .license   = (uint64_t)(unsigned long)"ASL",
         };
-        int progfd;
 
         progfd = n_acd_syscall_bpf(BPF_PROG_LOAD, &attr, sizeof(attr));
         if (progfd < 0)
