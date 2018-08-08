@@ -13,7 +13,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include "bpf-filter.h"
+#include "n-acd.h"
+#include "n-acd-private.h"
 
 #define ETHER_ARP_PACKET_INIT(_op, _mac, _sip, _tip) {                  \
                 .ea_hdr = {                                             \
