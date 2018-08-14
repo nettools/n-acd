@@ -8,7 +8,6 @@ libnacd_deps = [
         dep_clist,
         dep_crbtree,
         dep_csiphash,
-        dep_csundry,
 ]
 
 libnacd_sources = [
