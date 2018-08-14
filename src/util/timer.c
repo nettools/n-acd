@@ -11,14 +11,20 @@
 #include "timer.h"
 
 int timer_init(Timer *timer) {
+        clockid_t clock = CLOCK_BOOTTIME;
         int r;
 
-        r = timerfd_create(CLOCK_BOOTTIME, TFD_CLOEXEC | TFD_NONBLOCK);
+        r = timerfd_create(clock, TFD_CLOEXEC | TFD_NONBLOCK);
+        if (r < 0 && errno == EINVAL) {
+                clock = CLOCK_MONOTONIC;
+                r = timerfd_create(clock, TFD_CLOEXEC | TFD_NONBLOCK);
+        }
         if (r < 0)
                 return -errno;
 
         *timer = (Timer)TIMER_NULL(*timer);
         timer->fd = r;
+        timer->clock = clock;
 
         return 0;
 }
@@ -36,7 +42,7 @@ void timer_now(Timer *timer, uint64_t *nowp) {
         struct timespec ts;
         int r;
 
-        r = clock_gettime(CLOCK_BOOTTIME, &ts);
+        r = clock_gettime(timer->clock, &ts);
         assert(r >= 0);
 
         *nowp = ts.tv_sec * UINT64_C(1000000000) + ts.tv_nsec;
@@ -86,10 +92,10 @@ int timer_read(Timer *timer) {
                         return 0;
                 } else {
                         /*
-                         * Something failed. We use CLOCK_BOOTTIME, so
-                         * ECANCELED cannot happen. Hence, there is no
-                         * error that we could gracefully handle. Fail
-                         * hard and let the caller deal with it.
+                         * Something failed. We use CLOCK_BOOTTIME/MONOTONIC,
+                         * so ECANCELED cannot happen. Hence, there is no
+                         * error that we could gracefully handle. Fail hard
+                         * and let the caller deal with it.
                          */
                         return -errno;
                 }

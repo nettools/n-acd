@@ -17,6 +17,7 @@ typedef struct Timeout Timeout;
 
 struct Timer {
         int fd;
+        clockid_t clock;
         CRBTree tree;
         uint64_t scheduled_timeout;
 };
