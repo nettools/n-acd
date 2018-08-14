@@ -112,9 +112,17 @@ static inline void n_acd_config_freep(NAcdConfig **config) {
                 n_acd_config_free(*config);
 }
 
+static inline void n_acd_config_freev(NAcdConfig *config) {
+        n_acd_config_free(config);
+}
+
 static inline void n_acd_probe_config_freep(NAcdProbeConfig **config) {
         if (*config)
                 n_acd_probe_config_free(*config);
+}
+
+static inline void n_acd_probe_config_freev(NAcdProbeConfig *config) {
+        n_acd_probe_config_free(config);
 }
 
 static inline void n_acd_unrefp(NAcd **acd) {
@@ -122,9 +130,17 @@ static inline void n_acd_unrefp(NAcd **acd) {
                 n_acd_unref(*acd);
 }
 
+static inline void n_acd_unrefv(NAcd *acd) {
+        n_acd_unref(acd);
+}
+
 static inline void n_acd_probe_freep(NAcdProbe **probe) {
         if (*probe)
                 n_acd_probe_free(*probe);
+}
+
+static inline void n_acd_probe_freev(NAcdProbe *probe) {
+        n_acd_probe_free(probe);
 }
 
 #ifdef __cplusplus

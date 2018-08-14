@@ -78,15 +78,19 @@ static void test_api(void) {
                                 assert(!r);
 
                                 n_acd_probe_free(probe);
+                                n_acd_probe_freev(NULL);
                         }
 
                         n_acd_probe_config_free(c);
+                        n_acd_probe_config_freev(NULL);
                 }
 
                 n_acd_unref(acd);
+                n_acd_unrefv(NULL);
         }
 
         n_acd_config_free(config);
+        n_acd_config_freev(NULL);
 }
 
 int main(int argc, char **argv) {
