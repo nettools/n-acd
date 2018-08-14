@@ -6,14 +6,16 @@
 #include <time.h>
 #include <unistd.h>
 
-enum {
-        TIMER_E_SUCCESS,
-
-        TIMER_E_TRIGGERED,
-};
-
 typedef struct Timer Timer;
 typedef struct Timeout Timeout;
+
+enum {
+        _TIMER_E_SUCCESS,
+
+        TIMER_E_TRIGGERED,
+
+        _TIMER_E_N,
+};
 
 struct Timer {
         int fd;
