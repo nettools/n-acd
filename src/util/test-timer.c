@@ -108,10 +108,10 @@ void test_arm(void) {
         };
         int fd1, fd2, r;
 
-        fd1 = timerfd_create(CLOCK_BOOTTIME, TFD_CLOEXEC | TFD_NONBLOCK);
+        fd1 = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
         assert(fd1 >= 0);
 
-        fd2 = timerfd_create(CLOCK_BOOTTIME, TFD_CLOEXEC | TFD_NONBLOCK);
+        fd2 = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
         assert(fd1 >= 0);
 
         r = timerfd_settime(fd1, 0, &spec, NULL);

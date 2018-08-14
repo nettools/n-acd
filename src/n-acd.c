@@ -58,7 +58,7 @@ static int n_acd_get_random(unsigned int *random) {
         if (p)
                 c_siphash_append(&hash, p, 16);
 
-        r = clock_gettime(CLOCK_BOOTTIME, &ts);
+        r = clock_gettime(CLOCK_MONOTONIC, &ts);
         if (r < 0)
                 return -n_acd_errno();
 
