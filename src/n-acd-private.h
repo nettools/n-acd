@@ -38,7 +38,9 @@ struct NAcdConfig {
         size_t n_mac;
 };
 
-#define N_ACD_CONFIG_NULL(_x) { }
+#define N_ACD_CONFIG_NULL(_x) {                                                 \
+                .transport = _N_ACD_TRANSPORT_N,                                \
+        }
 
 struct NAcdProbeConfig {
         struct in_addr ip;
