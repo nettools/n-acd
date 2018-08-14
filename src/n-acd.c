@@ -4,7 +4,6 @@
 
 #include <assert.h>
 #include <c-list.h>
-#include <c-macro.h>
 #include <c-rbtree.h>
 #include <c-siphash.h>
 #include <endian.h>
@@ -487,7 +486,7 @@ static int n_acd_handle_timeout(NAcd *acd) {
                         break;
                 }
 
-                probe = c_container_of(timeout, NAcdProbe, timeout);
+                probe = (void *)timeout - offsetof(NAcdProbe, timeout);
                 r = n_acd_probe_handle_timeout(probe);
                 if (r)
                         return r;
