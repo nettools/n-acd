@@ -3,6 +3,7 @@
 #include <c-rbtree.h>
 #include <inttypes.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
 
 enum {

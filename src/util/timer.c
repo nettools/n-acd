@@ -2,13 +2,12 @@
  * Timer Utility Library
  */
 
-#include <stdio.h>
-
 #include <assert.h>
 #include <c-rbtree.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <sys/timerfd.h>
+#include <time.h>
 #include "timer.h"
 
 int timer_init(Timer *timer) {
