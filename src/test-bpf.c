@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include "n-acd.h"
 #include "n-acd-private.h"
+#include "test.h"
 
 #define ETHER_ARP_PACKET_INIT(_op, _mac, _sip, _tip) {                  \
                 .ea_hdr = {                                             \
@@ -214,6 +215,14 @@ static void test_filter(void) {
 }
 
 int main(int argc, char **argv) {
+        int r;
+
+        r = test_setup();
+        if (r)
+                return r;
+
         test_map();
         test_filter();
+
+        return 0;
 }
