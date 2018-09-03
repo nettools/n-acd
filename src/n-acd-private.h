@@ -4,8 +4,8 @@
 #include <c-rbtree.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <linux/if_ether.h>
 #include <net/ethernet.h>
+#include <netinet/if_ether.h>
 #include <netinet/in.h>
 #include <stdbool.h>
 #include <stdlib.h>
