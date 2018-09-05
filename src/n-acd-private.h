@@ -4,7 +4,6 @@
 #include <c-rbtree.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <net/ethernet.h>
 #include <netinet/if_ether.h>
 #include <netinet/in.h>
 #include <stdbool.h>

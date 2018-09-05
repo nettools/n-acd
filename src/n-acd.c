@@ -10,10 +10,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
-#include <linux/filter.h>
-#include <linux/if_ether.h>
 #include <linux/if_packet.h>
-#include <net/ethernet.h>
 #include <netinet/if_ether.h>
 #include <netinet/in.h>
 #include <stdlib.h>
@@ -21,7 +18,6 @@
 #include <sys/auxv.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
-#include <sys/timerfd.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include "n-acd.h"

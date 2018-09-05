@@ -8,10 +8,6 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
-#include <linux/filter.h>
-#include <linux/if_ether.h>
-#include <linux/if_packet.h>
-#include <net/ethernet.h>
 #include <netinet/if_ether.h>
 #include <netinet/in.h>
 #include <stdio.h>

@@ -17,7 +17,6 @@
 #include <linux/bpf.h>
 #include <netinet/if_ether.h>
 #include <netinet/in.h>
-#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
