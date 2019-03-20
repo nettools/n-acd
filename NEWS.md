@@ -1,6 +1,6 @@
-n-acd - IPv4 Address Conflict Detection
+# n-acd - IPv4 Address Conflict Detection
 
-CHANGES WITH 1:
+## CHANGES WITH 1:
 
         * Initial release of n-acd. This project implements the IPv4 Address
           Conflict Detection standard as defined in RFC-5227. The state machine
