@@ -39,6 +39,13 @@ meson test
 ninja install
 ```
 
+The following configuration options are available:
+
+ * `ebpf`: This boolean controls whether `ebpf` features are used to improve
+           the package filtering performance. If disabled, classic bpf will be
+           used. This feature requires a rather recent kernel (>=3.19).
+           Default is: true
+
 ### Repository:
 
  - **web**:   <https://github.com/nettools/n-acd>
