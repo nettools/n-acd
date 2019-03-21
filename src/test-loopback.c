@@ -69,11 +69,9 @@ static void test_loopback(int ifindex, uint8_t *mac, size_t n_mac) {
 
 int main(int argc, char **argv) {
         struct ether_addr mac;
-        int r, ifindex;
+        int ifindex;
 
-        r = test_setup();
-        if (r)
-                return r;
+        test_setup();
 
         test_loopback_up(&ifindex, &mac);
         test_loopback(ifindex, mac.ether_addr_octet, sizeof(mac.ether_addr_octet));

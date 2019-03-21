@@ -67,11 +67,9 @@ static void test_unplug_down(int ifindex, uint8_t *mac, size_t n_mac, unsigned i
 int main(int argc, char **argv) {
         struct ether_addr mac;
         unsigned int i;
-        int r, ifindex;
+        int ifindex;
 
-        r = test_setup();
-        if (r)
-                return r;
+        test_setup();
 
         test_veth_new(&ifindex, &mac, NULL, NULL);
 

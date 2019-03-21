@@ -215,11 +215,7 @@ static void test_filter(void) {
 }
 
 int main(int argc, char **argv) {
-        int r;
-
-        r = test_setup();
-        if (r)
-                return r;
+        test_setup();
 
         test_map();
         test_filter();

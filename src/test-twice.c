@@ -84,11 +84,9 @@ static void test_unused(int ifindex1, uint8_t *mac1, size_t n_mac1, int ifindex2
 
 int main(int argc, char **argv) {
         struct ether_addr mac1, mac2;
-        int r, ifindex1, ifindex2;
+        int ifindex1, ifindex2;
 
-        r = test_setup();
-        if (r)
-                return r;
+        test_setup();
 
         test_veth_new(&ifindex1, &mac1, &ifindex2, &mac2);
         test_unused(ifindex1, mac1.ether_addr_octet, sizeof(mac2.ether_addr_octet), ifindex2, mac2.ether_addr_octet, sizeof(mac2.ether_addr_octet));

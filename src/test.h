@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <endian.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <sys/socket.h>
@@ -21,6 +22,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/mount.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include "n-acd.h"
 
@@ -121,14 +125,62 @@ static inline void test_loopback_up(int *indexp, struct ether_addr *macp) {
         test_if_query("lo", indexp, macp);
 }
 
-static inline int test_setup(void) {
+static inline void test_unshare_user_namespace(void) {
+        uid_t euid;
+        gid_t egid;
+        int r, fd;
+
+        /*
+         * Enter a new user namespace as root:root.
+         */
+
+        euid = geteuid();
+        egid = getegid();
+
+        r = unshare(CLONE_NEWUSER);
+        assert(r >= 0);
+
+        fd = open("/proc/self/uid_map", O_WRONLY);
+        assert(fd >= 0);
+        r = dprintf(fd, "0 %d 1\n", euid);
+        assert(r >= 0);
+        close(fd);
+
+        fd = open("/proc/self/setgroups", O_WRONLY);
+        assert(fd >= 0);
+        r = dprintf(fd, "deny");
+        assert(r >= 0);
+        close(fd);
+
+        fd = open("/proc/self/gid_map", O_WRONLY);
+        assert(fd >= 0);
+        r = dprintf(fd, "0 %d 1\n", egid);
+        assert(r >= 0);
+        close(fd);
+}
+
+static inline void test_setup(void) {
         int r;
 
-        r = unshare(CLONE_NEWNET);
-        if (r < 0) {
-                assert(errno == EPERM);
-                return 77;
-        }
+        /*
+         * Move into a new network and mount namespace both associated
+         * with a new user namespace where the current eUID is mapped to
+         * 0. Then create a a private instance of /run/netns. This ensures
+         * that any network devices or network namespaces are private to
+         * the test process.
+         */
 
-        return 0;
+        test_unshare_user_namespace();
+
+        r = unshare(CLONE_NEWNET | CLONE_NEWNS);
+        assert(r >= 0);
+
+        r = mount(NULL, "/", "", MS_PRIVATE | MS_REC, NULL);
+        assert(r >= 0);
+
+        r = mount(NULL, "/run", "tmpfs", 0, NULL);
+        assert(r >= 0);
+
+        r = mkdir("/run/netns", 0755);
+        assert(r >= 0);
 }
