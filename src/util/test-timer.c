@@ -2,6 +2,8 @@
  * Tests for timer utility library
  */
 
+#undef NDEBUG
+
 #include <stdio.h>
 #include <errno.h>
 

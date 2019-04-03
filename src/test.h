@@ -6,6 +6,8 @@
  * includes net-namespace setups, veth setups, and more.
  */
 
+#undef NDEBUG
+
 #include <assert.h>
 #include <endian.h>
 #include <errno.h>
