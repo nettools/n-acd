@@ -60,7 +60,7 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
 
                 r = n_acd_probe_config_new(&probe_config);
                 c_assert(!r);
-                n_acd_probe_config_set_timeout(probe_config, 64);
+                n_acd_probe_config_set_timeout(probe_config, 1024);
 
                 c_assert(TEST_ACD_N_PROBES <= 10 << 24);
 
@@ -75,7 +75,6 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
                                  * Probe on one side, and leave the address
                                  * unset on the other. The probe must succeed.
                                  */
-
                                 break;
                         case 1:
                                 /*
@@ -83,18 +82,21 @@ static void test_veth(int ifindex1, uint8_t *mac1, size_t n_mac1,
                                  * probe on the other. The probe must fail.
                                  */
                                 test_add_child_ip(&ip);
-
                                 break;
                         case 2:
                                 /*
                                  * Probe both sides for the same address, at
                                  * most one may succeed.
                                  */
+
                                 r = n_acd_probe(acd2, &probes2[i], probe_config);
                                 c_assert(!r);
 
                                 ++n_running;
-
+                                break;
+                        default:
+                                c_assert(0);
+                                abort();
                                 break;
                         }
 
