@@ -8,6 +8,7 @@
 
 #include <assert.h>
 #include <c-rbtree.h>
+#include <c-stdaux.h>
 #include <endian.h>
 #include <errno.h>
 #include <inttypes.h>
@@ -81,8 +82,8 @@
  *
  * Return: 0 on success, negative error code on failure.
  */
-_public_ int n_acd_probe_config_new(NAcdProbeConfig **configp) {
-        _cleanup_(n_acd_probe_config_freep) NAcdProbeConfig *config = NULL;
+_c_public_ int n_acd_probe_config_new(NAcdProbeConfig **configp) {
+        _c_cleanup_(n_acd_probe_config_freep) NAcdProbeConfig *config = NULL;
 
         config = malloc(sizeof(*config));
         if (!config)
@@ -104,7 +105,7 @@ _public_ int n_acd_probe_config_new(NAcdProbeConfig **configp) {
  *
  * Return: NULL is returned.
  */
-_public_ NAcdProbeConfig *n_acd_probe_config_free(NAcdProbeConfig *config) {
+_c_public_ NAcdProbeConfig *n_acd_probe_config_free(NAcdProbeConfig *config) {
         if (!config)
                 return NULL;
 
@@ -124,7 +125,7 @@ _public_ NAcdProbeConfig *n_acd_probe_config_free(NAcdProbeConfig *config) {
  * The IP property selects the IP address that a probe checks for. It is the
  * caller's responsibility to guarantee the address is valid and can be used.
  */
-_public_ void n_acd_probe_config_set_ip(NAcdProbeConfig *config, struct in_addr ip) {
+_c_public_ void n_acd_probe_config_set_ip(NAcdProbeConfig *config, struct in_addr ip) {
         config->ip = ip;
 }
 
@@ -152,7 +153,7 @@ _public_ void n_acd_probe_config_set_ip(NAcdProbeConfig *config, struct in_addr 
  *
  * Default value is `N_ACD_TIMEOUT_RFC5227`.
  */
-_public_ void n_acd_probe_config_set_timeout(NAcdProbeConfig *config, uint64_t msecs) {
+_c_public_ void n_acd_probe_config_set_timeout(NAcdProbeConfig *config, uint64_t msecs) {
         config->timeout_msecs = msecs;
 }
 
@@ -262,14 +263,14 @@ static void n_acd_probe_unlink(NAcdProbe *probe) {
          */
         if (n_acd_probe_is_unique(probe)) {
                 r = n_acd_bpf_map_remove(probe->acd->fd_bpf_map, &probe->ip);
-                assert(r >= 0);
+                c_assert(r >= 0);
                 --probe->acd->n_bpf_map;
         }
         c_rbnode_unlink(&probe->ip_node);
 }
 
 int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
-        _cleanup_(n_acd_probe_freep) NAcdProbe *probe = NULL;
+        _c_cleanup_(n_acd_probe_freep) NAcdProbe *probe = NULL;
         int r;
 
         if (!config->ip.s_addr)
@@ -346,7 +347,7 @@ int n_acd_probe_new(NAcdProbe **probep, NAcd *acd, NAcdProbeConfig *config) {
  *
  * Return: NULL is returned.
  */
-_public_ NAcdProbe *n_acd_probe_free(NAcdProbe *probe) {
+_c_public_ NAcdProbe *n_acd_probe_free(NAcdProbe *probe) {
         NAcdEventNode *node, *t_node;
 
         if (!probe)
@@ -364,7 +365,7 @@ _public_ NAcdProbe *n_acd_probe_free(NAcdProbe *probe) {
 }
 
 int n_acd_probe_raise(NAcdProbe *probe, NAcdEventNode **nodep, unsigned int event) {
-        _cleanup_(n_acd_event_node_freep) NAcdEventNode *node = NULL;
+        _c_cleanup_(n_acd_event_node_freep) NAcdEventNode *node = NULL;
         int r;
 
         r = n_acd_raise(probe->acd, &node, event);
@@ -385,8 +386,8 @@ int n_acd_probe_raise(NAcdProbe *probe, NAcdEventNode **nodep, unsigned int even
                 node->event.conflict.probe = probe;
                 break;
         default:
-                assert(0);
-                return -EIO;
+                c_assert(0);
+                return -ENOTRECOVERABLE;
         }
 
         c_list_link_tail(&probe->event_list, &node->probe_link);
@@ -509,8 +510,8 @@ int n_acd_probe_handle_timeout(NAcdProbe *probe) {
                  * There are no timeouts in these states. If we trigger one,
                  * something is fishy.
                  */
-                assert(0);
-                return -EIO;
+                c_assert(0);
+                return -ENOTRECOVERABLE;
         }
 
         return 0;
@@ -641,8 +642,8 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
                  * We are not listening for packets in these states. If we receive one,
                  * something is fishy.
                  */
-                assert(0);
-                return -EIO;
+                c_assert(0);
+                return -ENOTRECOVERABLE;
         }
 
         return 0;
@@ -659,7 +660,7 @@ int n_acd_probe_handle_packet(NAcdProbe *probe, struct ether_arp *packet, bool h
  *
  * The default value is NULL.
  */
-_public_ void n_acd_probe_set_userdata(NAcdProbe *probe, void *userdata) {
+_c_public_ void n_acd_probe_set_userdata(NAcdProbe *probe, void *userdata) {
         probe->userdata = userdata;
 }
 
@@ -674,7 +675,7 @@ _public_ void n_acd_probe_set_userdata(NAcdProbe *probe, void *userdata) {
  *
  * Return: The stored userdata pointer is returned.
  */
-_public_ void n_acd_probe_get_userdata(NAcdProbe *probe, void **userdatap) {
+_c_public_ void n_acd_probe_get_userdata(NAcdProbe *probe, void **userdatap) {
         *userdatap = probe->userdata;
 }
 
@@ -693,7 +694,7 @@ _public_ void n_acd_probe_get_userdata(NAcdProbe *probe, void **userdatap) {
  * Return: 0 on success, N_ACD_E_INVALID_ARGUMENT in case the defence policy
  *         is invalid, negative error code on failure.
  */
-_public_ int n_acd_probe_announce(NAcdProbe *probe, unsigned int defend) {
+_c_public_ int n_acd_probe_announce(NAcdProbe *probe, unsigned int defend) {
         if (defend >= _N_ACD_DEFEND_N)
                 return N_ACD_E_INVALID_ARGUMENT;
 

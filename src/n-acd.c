@@ -50,6 +50,7 @@
 #include <c-list.h>
 #include <c-rbtree.h>
 #include <c-siphash.h>
+#include <c-stdaux.h>
 #include <endian.h>
 #include <errno.h>
 #include <inttypes.h>
@@ -99,7 +100,7 @@ static int n_acd_get_random(unsigned int *random) {
 
         r = clock_gettime(CLOCK_MONOTONIC, &ts);
         if (r < 0)
-                return -n_acd_errno();
+                return -c_errno();
 
         c_siphash_append(&hash, (const uint8_t *)&ts.tv_sec, sizeof(ts.tv_sec));
         c_siphash_append(&hash, (const uint8_t *)&ts.tv_nsec, sizeof(ts.tv_nsec));
@@ -120,19 +121,19 @@ static int n_acd_socket_new(int *fdp, int fd_bpf_prog, NAcdConfig *config) {
 
         s = socket(PF_PACKET, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
         if (s < 0) {
-                r = -n_acd_errno();
+                r = -c_errno();
                 goto error;
         }
 
         if (fd_bpf_prog >= 0) {
                 r = setsockopt(s, SOL_SOCKET, SO_ATTACH_BPF, &fd_bpf_prog, sizeof(fd_bpf_prog));
                 if (r < 0)
-                        return -n_acd_errno();
+                        return -c_errno();
         }
 
         r = bind(s, (struct sockaddr *)&address, sizeof(address));
         if (r < 0) {
-                r = -n_acd_errno();
+                r = -c_errno();
                 goto error;
         }
 
@@ -160,8 +161,8 @@ error:
  *
  * Return: 0 on success, negative error code on failure.
  */
-_public_ int n_acd_config_new(NAcdConfig **configp) {
-        _cleanup_(n_acd_config_freep) NAcdConfig *config = NULL;
+_c_public_ int n_acd_config_new(NAcdConfig **configp) {
+        _c_cleanup_(n_acd_config_freep) NAcdConfig *config = NULL;
 
         config = malloc(sizeof(*config));
         if (!config)
@@ -183,7 +184,7 @@ _public_ int n_acd_config_new(NAcdConfig **configp) {
  *
  * Return: NULL is returned.
  */
-_public_ NAcdConfig *n_acd_config_free(NAcdConfig *config) {
+_c_public_ NAcdConfig *n_acd_config_free(NAcdConfig *config) {
         if (!config)
                 return NULL;
 
@@ -206,7 +207,7 @@ _public_ NAcdConfig *n_acd_config_free(NAcdConfig *config) {
  * The ifindex corresponds to the interface index provided by the linux kernel.
  * It specifies the network device to be used.
  */
-_public_ void n_acd_config_set_ifindex(NAcdConfig *config, int ifindex) {
+_c_public_ void n_acd_config_set_ifindex(NAcdConfig *config, int ifindex) {
         config->ifindex = ifindex;
 }
 
@@ -219,7 +220,7 @@ _public_ void n_acd_config_set_ifindex(NAcdConfig *config, int ifindex) {
  * `N_ACD_TRANSPORT_*` identifiers. It selects which transport protocol `n-acd`
  * will run on.
  */
-_public_ void n_acd_config_set_transport(NAcdConfig *config, unsigned int transport) {
+_c_public_ void n_acd_config_set_transport(NAcdConfig *config, unsigned int transport) {
         config->transport = transport;
 }
 
@@ -235,7 +236,7 @@ _public_ void n_acd_config_set_transport(NAcdConfig *config, unsigned int transp
  * The address in @mac is copied into @config. It does not have to be retained
  * by the caller.
  */
-_public_ void n_acd_config_set_mac(NAcdConfig *config, const uint8_t *mac, size_t n_mac) {
+_c_public_ void n_acd_config_set_mac(NAcdConfig *config, const uint8_t *mac, size_t n_mac) {
         /*
          * We truncate the address at the maximum we support. We still remember
          * the original length, so any consumer of this configuration can then
@@ -272,7 +273,7 @@ NAcdEventNode *n_acd_event_node_free(NAcdEventNode *node) {
 
 int n_acd_ensure_bpf_map_space(NAcd *acd) {
         NAcdProbe *probe;
-        _cleanup_(n_acd_closep) int fd_map = -1, fd_prog = -1;
+        _c_cleanup_(c_closep) int fd_map = -1, fd_prog = -1;
         size_t  max_map;
         int r;
 
@@ -298,7 +299,7 @@ int n_acd_ensure_bpf_map_space(NAcd *acd) {
         if (fd_prog >= 0) {
                 r = setsockopt(acd->fd_socket, SOL_SOCKET, SO_ATTACH_BPF, &fd_prog, sizeof(fd_prog));
                 if (r)
-                        return -n_acd_errno();
+                        return -c_errno();
         }
 
         if (acd->fd_bpf_map >= 0)
@@ -322,9 +323,9 @@ int n_acd_ensure_bpf_map_space(NAcd *acd) {
  *
  * Return: 0 on success, negative error code on failure.
  */
-_public_ int n_acd_new(NAcd **acdp, NAcdConfig *config) {
-        _cleanup_(n_acd_unrefp) NAcd *acd = NULL;
-        _cleanup_(n_acd_closep) int fd_bpf_prog = -1;
+_c_public_ int n_acd_new(NAcd **acdp, NAcdConfig *config) {
+        _c_cleanup_(n_acd_unrefp) NAcd *acd = NULL;
+        _c_cleanup_(c_closep) int fd_bpf_prog = -1;
         int r;
 
         if (config->ifindex <= 0 ||
@@ -347,7 +348,7 @@ _public_ int n_acd_new(NAcd **acdp, NAcdConfig *config) {
 
         acd->fd_epoll = epoll_create1(EPOLL_CLOEXEC);
         if (acd->fd_epoll < 0)
-                return -n_acd_errno();
+                return -c_errno();
 
         r = timer_init(&acd->timer);
         if (r < 0)
@@ -373,7 +374,7 @@ _public_ int n_acd_new(NAcd **acdp, NAcdConfig *config) {
                               .data.u32 = N_ACD_EPOLL_TIMER,
                       });
         if (r < 0)
-                return -n_acd_errno();
+                return -c_errno();
 
         r = epoll_ctl(acd->fd_epoll, EPOLL_CTL_ADD, acd->fd_socket,
                       &(struct epoll_event){
@@ -381,7 +382,7 @@ _public_ int n_acd_new(NAcd **acdp, NAcdConfig *config) {
                               .data.u32 = N_ACD_EPOLL_SOCKET,
                       });
         if (r < 0)
-                return -n_acd_errno();
+                return -c_errno();
 
         *acdp = acd;
         acd = NULL;
@@ -397,10 +398,10 @@ static void n_acd_free_internal(NAcd *acd) {
         c_list_for_each_entry_safe(node, t_node, &acd->event_list, acd_link)
                 n_acd_event_node_free(node);
 
-        assert(c_rbtree_is_empty(&acd->ip_tree));
+        c_assert(c_rbtree_is_empty(&acd->ip_tree));
 
         if (acd->fd_socket >= 0) {
-                assert(acd->fd_epoll >= 0);
+                c_assert(acd->fd_epoll >= 0);
                 epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->fd_socket, NULL);
                 close(acd->fd_socket);
                 acd->fd_socket = -1;
@@ -412,7 +413,7 @@ static void n_acd_free_internal(NAcd *acd) {
         }
 
         if (acd->timer.fd >= 0) {
-                assert(acd->fd_epoll >= 0);
+                c_assert(acd->fd_epoll >= 0);
                 epoll_ctl(acd->fd_epoll, EPOLL_CTL_DEL, acd->timer.fd, NULL);
                 timer_deinit(&acd->timer);
         }
@@ -434,7 +435,7 @@ static void n_acd_free_internal(NAcd *acd) {
  *
  * Return: @acd is returned.
  */
-_public_ NAcd *n_acd_ref(NAcd *acd) {
+_c_public_ NAcd *n_acd_ref(NAcd *acd) {
         if (acd)
                 ++acd->n_refs;
         return acd;
@@ -449,7 +450,7 @@ _public_ NAcd *n_acd_ref(NAcd *acd) {
  *
  * Return: NULL is returned.
  */
-_public_ NAcd *n_acd_unref(NAcd *acd) {
+_c_public_ NAcd *n_acd_unref(NAcd *acd) {
         if (acd && !--acd->n_refs)
                 n_acd_free_internal(acd);
         return NULL;
@@ -535,7 +536,7 @@ int n_acd_send(NAcd *acd, const struct in_addr *tpa, const struct in_addr *spa) 
                  * Random network error. We treat this as fatal and propagate
                  * the error, so it is noticed and can be investigated.
                  */
-                return -n_acd_errno();
+                return -c_errno();
         } else if (l != (ssize_t)sizeof(arp)) {
                 /*
                  * Ugh, the kernel modified the packet. This is unexpected. We
@@ -564,7 +565,7 @@ int n_acd_send(NAcd *acd, const struct in_addr *tpa, const struct in_addr *spa) 
  *
  * Currently, the file-descriptor is an epoll-fd.
  */
-_public_ void n_acd_get_fd(NAcd *acd, int *fdp) {
+_c_public_ void n_acd_get_fd(NAcd *acd, int *fdp) {
         *fdp = acd->fd_epoll;
 }
 
@@ -715,7 +716,7 @@ static int n_acd_dispatch_timer(NAcd *acd, struct epoll_event *event) {
                 if (r <= 0)
                         return r;
 
-                assert(r == TIMER_E_TRIGGERED);
+                c_assert(r == TIMER_E_TRIGGERED);
 
                 /*
                  * A timer triggered, handle all pending timeouts at a given
@@ -828,7 +829,7 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
                          * Something went wrong. Propagate the error-code, so
                          * this can be investigated.
                          */
-                        return -n_acd_errno();
+                        return -c_errno();
                 }
         } else if (n >= (ssize_t)n_batch) {
                 /*
@@ -888,14 +889,14 @@ static int n_acd_dispatch_socket(NAcd *acd, struct epoll_event *event) {
  * Return: 0 on success, N_ACD_E_PREEMPTED on preemption, negative error code
  *         on failure.
  */
-_public_ int n_acd_dispatch(NAcd *acd) {
+_c_public_ int n_acd_dispatch(NAcd *acd) {
         struct epoll_event events[2];
         int n, i, r = 0;
 
         n = epoll_wait(acd->fd_epoll, events, sizeof(events) / sizeof(*events), 0);
         if (n < 0) {
                 /* Linux never returns EINTR if `timeout == 0'. */
-                return -n_acd_errno();
+                return -c_errno();
         }
 
         acd->preempted = false;
@@ -909,7 +910,7 @@ _public_ int n_acd_dispatch(NAcd *acd) {
                         r = n_acd_dispatch_socket(acd, events + i);
                         break;
                 default:
-                        assert(0);
+                        c_assert(0);
                         r = 0;
                         break;
                 }
@@ -976,7 +977,7 @@ _public_ int n_acd_dispatch(NAcd *acd) {
  *          @eventp and 0 is returned. If an error is returned, @eventp is left
  *          untouched.
  */
-_public_ int n_acd_pop_event(NAcd *acd, NAcdEvent **eventp) {
+_c_public_ int n_acd_pop_event(NAcd *acd, NAcdEvent **eventp) {
         NAcdEventNode *node, *t_node;
 
         c_list_for_each_entry_safe(node, t_node, &acd->event_list, acd_link) {
@@ -1018,6 +1019,6 @@ _public_ int n_acd_pop_event(NAcd *acd, NAcdEvent **eventp) {
  * Return: 0 on success, N_ACD_E_INVALID_ARGUMENT on invalid configuration
  *         parameters, negative error code on failure.
  */
-_public_ int n_acd_probe(NAcd *acd, NAcdProbe **probep, NAcdProbeConfig *config) {
+_c_public_ int n_acd_probe(NAcd *acd, NAcdProbe **probep, NAcdProbeConfig *config) {
         return n_acd_probe_new(probep, acd, config);
 }
