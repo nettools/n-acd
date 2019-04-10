@@ -19,7 +19,7 @@ heavily on the API behavior of recent linux kernel releases.
 The requirements for this project are:
 
  * `Linux kernel >= 3.19`
- * `libc` (e.g., glibc >= 2.16)
+ * `libc` (e.g., `glibc >= 2.16`)
 
 At build-time, the following software is required:
 
@@ -28,7 +28,9 @@ At build-time, the following software is required:
 
 ### Build
 
-To build this project, run:
+The meson build-system is used for this project. Contact upstream
+documentation for detailed help. In most situations the following
+commands are sufficient to build and install from source:
 
 ```sh
 mkdir build
