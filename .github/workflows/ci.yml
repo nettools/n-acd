@@ -22,7 +22,7 @@ jobs:
     - name: Fetch CI
       uses: actions/checkout@v2
       with:
-        repository: converse1/automation
+        repository: c-util/automation
         ref: v1
         path: automation
     - name: Build CI
@@ -58,7 +58,7 @@ jobs:
     - name: Fetch CI
       uses: actions/checkout@v2
       with:
-        repository: converse1/automation
+        repository: c-util/automation
         ref: v1
         path: automation
     - name: Build CI
@@ -94,7 +94,7 @@ jobs:
     - name: Fetch CI
       uses: actions/checkout@v2
       with:
-        repository: converse1/automation
+        repository: c-util/automation
         ref: v1
         path: automation
     - name: Build CI
