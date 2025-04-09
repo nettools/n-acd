@@ -30,8 +30,8 @@
  *     PROBE_NUM                                3
  *     PROBE_WAIT                               1s
  *     PROBE_MIN                                1s
- *     PROBE_MAX                                3s
- *     ANNOUNCE_NUM                             3
+ *     PROBE_MAX                                2s
+ *     ANNOUNCE_NUM                             2
  *     ANNOUNCE_WAIT                            2s
  *     ANNOUNCE_INTERVAL                        2s
  *     MAX_CONFLICTS                            10
@@ -39,7 +39,7 @@
  *     DEFEND_INTERVAL                          10s
  *
  * If we assume a best-case and worst-case scenario for non-conflicted runs, we
- * end up with a runtime between 4s and 9s to finish the probe. Then it still
+ * end up with a runtime between 4s and 7s to finish the probe. Then it still
  * takes a fixed 4s to finish the announcements.
  *
  * RFC 5227 section 1.1:
@@ -51,21 +51,21 @@
  *     no such future standards exist.) [...]
  *
  * Unfortunately, no-one ever stepped up to write a "future standard" to revise
- * the timings. A 9s timeout for successful link setups is not acceptable today.
+ * the timings. A 7s timeout for successful link setups is not acceptable today.
  * Hence, we will just go forward and ignore the proposed values. On both
  * wired and wireless local links round-trip latencies of below 3ms are common.
  * We require the caller to set a timeout multiplier, where 1 corresponds to a
  * total probe time between 0.5 ms and 1.0 ms. On modern networks a multiplier
  * of about 100 should be a reasonable default. To comply with the RFC select a
- * multiplier of 9000.
+ * multiplier of 7000.
  */
 #define N_ACD_RFC_PROBE_NUM                     (3)
-#define N_ACD_RFC_PROBE_WAIT_NSEC               (UINT64_C(111111)) /* 1/9 ms */
-#define N_ACD_RFC_PROBE_MIN_NSEC                (UINT64_C(111111)) /* 1/9 ms */
-#define N_ACD_RFC_PROBE_MAX_NSEC                (UINT64_C(333333)) /* 3/9 ms */
-#define N_ACD_RFC_ANNOUNCE_NUM                  (3)
-#define N_ACD_RFC_ANNOUNCE_WAIT_NSEC            (UINT64_C(222222)) /* 2/9 ms */
-#define N_ACD_RFC_ANNOUNCE_INTERVAL_NSEC        (UINT64_C(222222)) /* 2/9 ms */
+#define N_ACD_RFC_PROBE_WAIT_NSEC               (UINT64_C(1000000 / 7))     /* 1/7 ms */
+#define N_ACD_RFC_PROBE_MIN_NSEC                (UINT64_C(1000000 / 7))     /* 1/7 ms */
+#define N_ACD_RFC_PROBE_MAX_NSEC                (UINT64_C(1000000 * 2 / 7)) /* 2/7 ms */
+#define N_ACD_RFC_ANNOUNCE_NUM                  (2)
+#define N_ACD_RFC_ANNOUNCE_WAIT_NSEC            (UINT64_C(1000000 * 2 / 7)) /* 2/7 ms */
+#define N_ACD_RFC_ANNOUNCE_INTERVAL_NSEC        (UINT64_C(1000000 * 2 / 7)) /* 2/7 ms */
 #define N_ACD_RFC_MAX_CONFLICTS                 (10)
 #define N_ACD_RFC_RATE_LIMIT_INTERVAL_NSEC      (UINT64_C(60000000000)) /* 60s */
 #define N_ACD_RFC_DEFEND_INTERVAL_NSEC          (UINT64_C(10000000000)) /* 10s */
@@ -136,7 +136,7 @@ _c_public_ void n_acd_probe_config_set_ip(NAcdProbeConfig *config, struct in_add
  *
  * This sets the timeout to use for a conflict detection probe. The
  * specification default is provided as `N_ACD_TIMEOUT_RFC5227` and corresponds
- * to 9 seconds.
+ * to 7 seconds.
  *
  * If set to 0, conflict detection is skipped and the address is immediately
  * advertised and defended.
