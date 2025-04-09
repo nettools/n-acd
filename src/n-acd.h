@@ -23,7 +23,7 @@ typedef struct NAcdEvent NAcdEvent;
 typedef struct NAcdProbe NAcdProbe;
 typedef struct NAcdProbeConfig NAcdProbeConfig;
 
-#define N_ACD_TIMEOUT_RFC5227 (UINT64_C(9000))
+#define N_ACD_TIMEOUT_RFC5227 (UINT64_C(7000))
 
 enum {
         _N_ACD_E_SUCCESS,
