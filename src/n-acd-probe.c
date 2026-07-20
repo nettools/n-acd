@@ -157,7 +157,7 @@ _c_public_ void n_acd_probe_config_set_timeout(NAcdProbeConfig *config, uint64_t
         config->timeout_msecs = msecs;
 }
 
-static void n_acd_probe_schedule(NAcdProbe *probe, uint64_t n_timeout, unsigned int n_jitter) {
+static void n_acd_probe_schedule(NAcdProbe *probe, uint64_t n_timeout, uint64_t n_jitter) {
         uint64_t n_time;
 
         timer_now(&probe->acd->timer, &n_time);
